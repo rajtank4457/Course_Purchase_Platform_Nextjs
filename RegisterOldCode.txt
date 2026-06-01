@@ -1,0 +1,295 @@
+"use client";
+
+import Link from "next/link";
+import axios from "axios";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import API_URL from "@/config/api";
+import {
+  FiUser,
+  FiMail,
+  FiLock,
+  FiPhone,
+  FiMapPin,
+  FiCalendar,
+} from "react-icons/fi";
+
+function Register() {
+  const router = useRouter();
+  const [tempToken, setTempToken] = useState("");
+
+  const [values, setValues] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+    phoneNo: "",
+    address: "",
+    city: "",
+    state: "",
+    dob: "",
+  });
+
+  useEffect(() => {
+    const getRegisterToken = async () => {
+      try {
+        const res = await axios.post(`${API_URL}/auth/register-token`, {
+          publicToken: "PUBLIC_REGISTER_TOKEN_123",
+        });
+        setTempToken(res.data.tempToken);
+      } catch (err) {
+        console.log(err.response?.data || err.message);
+      }
+    };
+
+    getRegisterToken();
+  }, []);
+
+  const handleChange = (e) => {
+    setValues({ ...values, [e.target.name]: e.target.value });
+  };
+
+  const inputClass =
+    "w-full rounded-lg border border-gray-200 bg-gray-50 px-10 py-2.5 text-sm text-gray-800 outline-none transition-all duration-200 placeholder:text-gray-400 focus:border-green-500 focus:bg-white focus:ring-4 focus:ring-green-100";
+
+  const labelClass = "mb-1 block text-xs font-semibold text-gray-600";
+
+  const FieldIcon = ({ children }) => (
+    <span className="absolute left-4 top-[39px] text-gray-400">{children}</span>
+  );
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    try {
+      let deviceId = localStorage.getItem("device_id");
+
+      if (!deviceId) {
+        deviceId = crypto.randomUUID();
+        localStorage.setItem("device_id", deviceId);
+      }
+
+      const res = await axios.post(
+        `${API_URL}/auth/register`,
+        { ...values, deviceId },
+        {
+          headers: {
+            Authorization: `Bearer ${tempToken}`,
+          },
+          withCredentials: true,
+        },
+      );
+
+      alert(res.data.message);
+      router.push("/login");
+    } catch (err) {
+      console.log(err.response?.data || err.message);
+      alert(err.response?.data?.message || "Registration failed");
+    }
+  };
+
+  return (
+    <div className="h-screen bg-gradient-to-br from-emerald-50 via-white to-green-100 flex items-center justify-center p-3 overflow-hidden">
+      <div className="w-full max-w-6xl h-[95vh] overflow-hidden rounded-2xl bg-white shadow-xl grid grid-cols-1 lg:grid-cols-[0.85fr_1.15fr]">
+        <div className="hidden lg:flex flex-col justify-between bg-gradient-to-br from-green-700 to-emerald-500 p-6 text-white">
+          <div>
+            <div className="mb-8 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 text-2xl font-bold">
+              R
+            </div>
+
+            <h1 className="text-3xl font-bold leading-tight">
+              Join Our Learning Platform
+            </h1>
+
+            <p className="mt-2 text-sm leading-7 text-green-50">
+              Create your account and get access to courses, progress tracking,
+              notifications and secure login.
+            </p>
+          </div>
+
+          <div className="space-y-4 text-sm">
+            <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
+              Secure registration with device verification
+            </div>
+            <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
+              Easy access to your courses and dashboard
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 sm:p-5 overflow-y-auto">
+          <div className="mb-4">
+            <h2 className="text-2xl font-bold text-gray-900">Create Account</h2>
+            <p className="mt-2 text-sm text-gray-500">
+              Please enter your details below to register.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="relative">
+                <label className={labelClass}>First Name</label>
+                <FieldIcon>
+                  <FiUser />
+                </FieldIcon>
+                <input
+                  name="firstName"
+                  placeholder="Enter first name"
+                  value={values.firstName}
+                  onChange={handleChange}
+                  required
+                  className={inputClass}
+                />
+              </div>
+
+              <div className="relative">
+                <label className={labelClass}>Last Name</label>
+                <FieldIcon>
+                  <FiUser />
+                </FieldIcon>
+                <input
+                  name="lastName"
+                  placeholder="Enter last name"
+                  value={values.lastName}
+                  onChange={handleChange}
+                  required
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            <div className="relative">
+              <label className={labelClass}>Email Address</label>
+              <FieldIcon>
+                <FiMail />
+              </FieldIcon>
+              <input
+                type="email"
+                name="email"
+                placeholder="example@gmail.com"
+                value={values.email}
+                onChange={handleChange}
+                required
+                className={inputClass}
+              />
+            </div>
+
+            <div className="relative">
+              <label className={labelClass}>Password</label>
+              <FieldIcon>
+                <FiLock />
+              </FieldIcon>
+              <input
+                type="password"
+                name="password"
+                placeholder="Create strong password"
+                value={values.password}
+                onChange={handleChange}
+                required
+                className={inputClass}
+              />
+            </div>
+
+            <div className="relative">
+              <label className={labelClass}>Phone Number</label>
+              <FieldIcon>
+                <FiPhone />
+              </FieldIcon>
+              <input
+                name="phoneNo"
+                placeholder="Enter phone number"
+                value={values.phoneNo}
+                onChange={handleChange}
+                required
+                className={inputClass}
+              />
+            </div>
+
+            <div className="relative">
+              <label className={labelClass}>Address</label>
+              <span className="absolute left-4 top-[40px] text-gray-400">
+                <FiMapPin />
+              </span>
+              <textarea
+                name="address"
+                placeholder="Enter full address"
+                value={values.address}
+                onChange={handleChange}
+                required
+                rows={3}
+                className={`${inputClass} resize-none`}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="relative">
+                <label className={labelClass}>City</label>
+                <FieldIcon>
+                  <FiMapPin />
+                </FieldIcon>
+                <input
+                  name="city"
+                  placeholder="Enter city"
+                  value={values.city}
+                  onChange={handleChange}
+                  required
+                  className={inputClass}
+                />
+              </div>
+
+              <div className="relative">
+                <label className={labelClass}>State</label>
+                <FieldIcon>
+                  <FiMapPin />
+                </FieldIcon>
+                <input
+                  name="state"
+                  placeholder="Enter state"
+                  value={values.state}
+                  onChange={handleChange}
+                  required
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            <div className="relative">
+              <label className={labelClass}>Date of Birth</label>
+              <FieldIcon>
+                <FiCalendar />
+              </FieldIcon>
+              <input
+                type="date"
+                name="dob"
+                value={values.dob}
+                onChange={handleChange}
+                required
+                className={inputClass}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={!tempToken}
+              className="w-full rounded-xl bg-green-600 py-2.5 text-sm font-bold text-white shadow-lg shadow-green-200 transition-all duration-200 hover:bg-green-700 hover:shadow-xl disabled:cursor-not-allowed disabled:bg-gray-400 disabled:shadow-none"
+            >
+              {tempToken ? "Create Account" : "Preparing Registration..."}
+            </button>
+          </form>
+
+          <p className="mt-3 text-center text-sm text-gray-600">
+            Already have an account?{" "}
+            <Link
+              href="/login"
+              className="font-bold text-green-600 hover:text-green-700 hover:underline"
+            >
+              Login
+            </Link>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default Register;

@@ -1,0 +1,53 @@
+
+Course_Purchase_Next/
+│
+├── frontend/                 // Next.js
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── page.jsx
+│   │   │   ├── login/page.jsx
+│   │   │   ├── register/page.jsx
+│   │   │   ├── user/
+│   │   │   │   ├── dashboard/page.jsx
+│   │   │   │   ├── courses/page.jsx
+│   │   │   │   ├── course/[id]/page.jsx
+│   │   │   │   ├── cart/page.jsx
+│   │   │   │   ├── checkout/page.jsx
+│   │   │   │   └── orders/page.jsx
+│   │   │   └── admin/
+│   │   │       ├── dashboard/page.jsx
+│   │   │       ├── courses/page.jsx
+│   │   │       ├── students/page.jsx
+│   │   │       └── orders/page.jsx
+│   │   │
+│   │   ├── components/
+│   │   │   ├── Navbar.jsx
+│   │   │   ├── CourseCard.jsx
+│   │   │   ├── Sidebar.jsx
+│   │   │   └── ProtectedRoute.jsx
+│   │   │
+│   │   ├── context/
+│   │   │   └── CartContext.jsx
+│   │   │
+│   │   └── config/
+│   │       └── api.js
+│
+└── backend/                  // Node + Express
+    ├── config/
+    │   └── db.js
+    ├── routes/
+    │   ├── authRoutes.js
+    │   ├── courseRoutes.js
+    │   ├── cartRoutes.js
+    │   ├── orderRoutes.js
+    │   └── adminRoutes.js
+    ├── controllers/
+    │   ├── authController.js
+    │   ├── courseController.js
+    │   ├── cartController.js
+    │   └── orderController.js
+    ├── middleware/
+    │   └── authMiddleware.js
+    ├── uploads/
+    ├── .env
+    └── server.js
