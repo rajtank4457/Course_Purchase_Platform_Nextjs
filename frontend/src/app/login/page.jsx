@@ -55,15 +55,13 @@ function Login() {
 
       localStorage.setItem("role", data.role);
       localStorage.setItem("type", data.type);
-      // localStorage.setItem("user", JSON.stringify(data.user));
+      localStorage.setItem("user", JSON.stringify(data.user));
 
       if (data.user?.adminId) {
-        localStorage.setItem("userId", data.user.adminId);
+        localStorage.setItem("userId", data.user.adminId);  
       } else {
         localStorage.setItem("userId", data.user.userId);
       }
-
-      alert(data.message);
 
       setValues({
         email: "",
@@ -71,9 +69,9 @@ function Login() {
       });
 
       if (data.type === "admin") {
-        router.push("/admin/dashboard");
+        router.replace("/admin/dashboard");
       } else {
-        router.push("/");
+        router.replace("/");
       }
     } catch (err) {
       console.log(err.response?.data || err.message);

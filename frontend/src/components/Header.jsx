@@ -42,49 +42,81 @@ export default function Header() {
   const [role, setRole] = useState("");
   const [type, setType] = useState("");
   const [userName, setUserName] = useState("");
+  const [userLoading, setUserLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
   const [cartCount, setCartCount] = useState(0);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
-  const [mounted, setMounted] = useState(false);
 
   const menuOpen = Boolean(anchorEl);
 
-  useEffect(() => {
-    setMounted(true);
 
-    const fetchLoggedUser = async () => {
+
+  useEffect(() => {
+    const setUserData = (user) => {
+      if (user.adminName || user.type === "admin") {
+        setUserName(user.adminName);
+        setRole(user.role || "");
+        setType("admin");
+      } else {
+        setUserName(`${user.firstName || ""} ${user.lastName || ""}`.trim());
+        setRole("user");
+        setType("user");
+      }
+
+      const storedCartCount = localStorage.getItem("cartCount");
+      if (storedCartCount) {
+        setCartCount(Number(storedCartCount));
+      }
+
+      fetchCartCount();
+
+      window.addEventListener("cartUpdated", fetchCartCount);
+
+      return () => {
+        window.removeEventListener("cartUpdated", fetchCartCount);
+      };
+
+      setUserEmail(user.email || "");
+    };
+
+    const fetchLoggedUser = async (showLoading = false) => {
       try {
+        if (showLoading) setUserLoading(true);
+
         const res = await axios.get(`${API_URL}/auth/home`, {
           withCredentials: true,
         });
 
         const user = res.data.user;
 
-        setUserEmail(user.email || "");
-
-        if (user.adminName) {
-          setUserName(user.adminName);
-          setRole(user.role || "");
-          setType("admin");
-        } else {
-          setUserName(`${user.firstName || ""} ${user.lastName || ""}`.trim());
-          setRole("user");
-          setType("user");
-        }
-
-        const cart = JSON.parse(localStorage.getItem("cart") || "[]");
-        setCartCount(cart.length);
+        setUserData(user);
+        localStorage.setItem("currentUser", JSON.stringify(user));
       } catch (err) {
-        console.log(
-          "Header user fetch failed:",
-          err.response?.data || err.message,
-        );
+        console.log("Header user fetch failed:", err);
+        localStorage.removeItem("currentUser");
+      } finally {
+        setUserLoading(false);
       }
     };
 
-    fetchLoggedUser();
+    const storedUser = localStorage.getItem("currentUser");
+
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        setUserData(user);
+        setUserLoading(false);
+
+        fetchLoggedUser(false);
+      } catch {
+        localStorage.removeItem("currentUser");
+        fetchLoggedUser(true);
+      }
+    } else {
+      fetchLoggedUser(true);
+    }
   }, []);
 
   const isAdmin =
@@ -130,7 +162,7 @@ export default function Header() {
       console.log("Logout API failed:", err.message);
     } finally {
       localStorage.clear();
-      router.push("/login");
+      router.replace("/login");
     }
   };
 
@@ -222,9 +254,31 @@ export default function Header() {
     </Box>
   );
 
-  if (!mounted) {
-    return null;
-  }
+  const fetchCartCount = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/cart/count`, {
+        withCredentials: true,
+      });
+
+      setCartCount(Number(res.data.count || 0));
+    } catch (err) {
+      console.log("Cart count fetch failed:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchCartCount();
+
+    const updateCartCount = () => {
+      fetchCartCount();
+    };
+
+    window.addEventListener("cartUpdated", updateCartCount);
+
+    return () => {
+      window.removeEventListener("cartUpdated", updateCartCount);
+    };
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 border-b bg-white shadow-sm">
@@ -299,7 +353,7 @@ export default function Header() {
               onClick={() => router.push("/user/cart")}
               className="!rounded-xl !bg-purple-100 !p-3 !text-purple-700 transition hover:!bg-purple-200"
             >
-              <Badge badgeContent={cartCount} color="error">
+              <Badge badgeContent={cartCount} color="error" showZero>
                 <ShoppingCartIcon className="text-purple-700" />
               </Badge>
             </IconButton>
@@ -308,7 +362,9 @@ export default function Header() {
           {!isMobile && (
             <p className="text-sm font-medium text-gray-700">
               Welcome,{" "}
-              <span className="font-bold text-purple-700">{userName}</span>
+              <span className="font-bold text-purple-700">
+                {userLoading ? "Loading..." : userName}
+              </span>
             </p>
           )}
 
@@ -323,7 +379,7 @@ export default function Header() {
                   fontWeight: 700,
                 }}
               >
-                {userName?.charAt(0)?.toUpperCase()}
+                {userLoading ? "" : userName?.charAt(0)?.toUpperCase()}
               </Avatar>
             </IconButton>
           </Tooltip>

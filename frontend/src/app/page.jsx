@@ -6,8 +6,9 @@ import axios from "axios";
 import API_URL from "@/config/api";
 import Link from "next/link";
 import {
-  GraduationCap,
+  ArrowRight,
   ShoppingCart,
+  Crown, BadgeCheck,
   Star,
   Users,
   PlayCircle,
@@ -20,7 +21,6 @@ export default function Home() {
 
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [checkingAuth, setCheckingAuth] = useState(true);
 
   const fetchCourses = async () => {
     try {
@@ -28,7 +28,7 @@ export default function Home() {
         withCredentials: true,
       });
 
-      setCourses(res.data);
+      setCourses(res.data.data);
     } catch (err) {
       console.log(err);
     } finally {
@@ -37,21 +37,13 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const checkAuthAndFetchCourses = async () => {
-      try {
-        await axios.get(`${API_URL}/auth/home`, {
-          withCredentials: true,
-        });
+    fetchCourses();
+  }, []);
 
-        setCheckingAuth(false);
-        fetchCourses();
-      } catch (err) {
-        router.replace("/login");
-      }
-    };
+  const latestCourses = [...courses]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 4);
 
-    checkAuthAndFetchCourses();
-  }, [router]);
 
   // NEW COURSE
   const isNewCourse = (createdAt) => {
@@ -63,20 +55,6 @@ export default function Home() {
     return diffHours <= 24;
   };
 
-  // ADD TO CART
-  const addToCart = (course) => {
-    console.log("Added to cart:", course);
-  };
-
-  if (checkingAuth) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <h2 className="text-xl font-bold text-gray-700">
-          Checking authentication...
-        </h2>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -159,6 +137,13 @@ export default function Home() {
                 Learn from top instructors and improve your skills.
               </p>
             </div>
+            <button
+              onClick={() => router.push("/user/dashboard")}
+              className="group flex items-center gap-2 text-purple-700 font-semibold cursor-pointer"
+            >
+              Explore More
+              <ArrowRight className="h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
+            </button>
           </div>
 
           {loading ? (
@@ -166,110 +151,82 @@ export default function Home() {
               Loading Courses...
             </div>
           ) : (
-            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-              {courses.map((course, index) => (
+            <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-4">
+              {latestCourses.map((course) => (
                 <div
-                  key={course.CId}
-                  className="group relative overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm transition duration-300 hover:-translate-y-2 hover:shadow-2xl"
+                  key={course.courseId}
+                  className="group overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
                 >
-                  {/* IMAGE */}
-                  <div className="relative overflow-hidden">
+                  <div className="relative aspect-video overflow-hidden bg-gray-100">
                     <img
-                      src={course.CImage || "/image/default-course.jpg"}
-                      alt={course.CName}
-                      className="h-56 w-full object-cover transition duration-500 group-hover:scale-110"
+                      src={
+                        course.courseImg
+                          ? `${API_URL}/uploads/${course.courseImg}`
+                          : `${API_URL}/uploads/default-course.png`
+                      }
+                      alt={course.courseName}
+                      className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                     />
 
-                    {/* PREMIUM/FREE */}
-                    <div className="absolute left-4 top-4">
-                      <span
-                        className={`rounded-full px-4 py-1 text-xs font-bold text-white ${
-                          Number(course.CType) === 1
-                            ? "bg-orange-500"
-                            : "bg-green-600"
-                        }`}
-                      >
-                        {Number(course.CType) === 1 ? "Premium" : "Free"}
-                      </span>
-                    </div>
-
-                    {/* NEW */}
-                    {isNewCourse(course.CreatedAt) && (
-                      <div className="absolute right-4 top-4">
-                        <span className="rounded-full bg-red-500 px-4 py-1 text-xs font-bold text-white">
-                          NEW
-                        </span>
+                    {isNewCourse(course.createdAt) && (
+                      <div className="absolute right-3 top-3 rounded-full bg-red-500 px-3 py-1 text-xs font-bold text-white shadow-lg">
+                        🔥 New
                       </div>
                     )}
                   </div>
 
-                  {/* CONTENT */}
-                  <div className="p-6">
-                    <h3 className="line-clamp-2 text-2xl font-bold text-gray-900">
-                      {course.CName}
-                    </h3>
+                  <div className="p-5">
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <h3 className="line-clamp-1 text-lg font-bold text-gray-900">
+                        {course.courseName}
+                      </h3>
 
-                    <p className="mt-3 line-clamp-2 text-sm text-gray-600">
-                      {course.CDesc}
-                    </p>
-
-                    <div className="mt-5 flex items-center gap-5 text-sm text-gray-500">
-                      <div className="flex items-center gap-1">
-                        <Users className="h-4 w-4" />
-                        1.2k Students
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        <PlayCircle className="h-4 w-4" />
-                        {course.chapters?.length || 0} Chapters
-                      </div>
+                      {Number(course.courseType) === 1 ? (
+                        <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                          <Crown className="h-4 w-4" />
+                          Premium
+                        </span>
+                      ) : (
+                        <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-bold text-green-700">
+                          <BadgeCheck className="h-4 w-4" />
+                          Free
+                        </span>
+                      )}
                     </div>
 
-                    {/* PRICE */}
-                    <div className="mt-6 flex items-center justify-between">
-                      {Number(course.CType) === 1 ? (
-                        <div>
-                          <h4 className="text-3xl font-extrabold text-purple-700">
-                            ₹{course.CPrice}
-                          </h4>
+                    <p className="line-clamp-2 text-sm leading-6 text-gray-600">
+                      {course.courseDesc}
+                    </p>
 
-                          <p className="text-sm text-gray-400 line-through">
-                            ₹{Math.floor(course.CPrice * 1.5)}
-                          </p>
-                        </div>
+                    <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
+                      <span className="flex items-center gap-1">
+                        <Users className="h-4 w-4" />
+                        1.2k Students
+                      </span>
+
+                      <span className="flex items-center gap-1">
+                        <PlayCircle className="h-4 w-4" />
+                        {course.chapters?.length || 0} Chapters
+                      </span>
+                    </div>
+
+                    <div className="mt-5 flex items-center justify-between">
+                      {Number(course.courseType) === 1 ? (
+                        <h4 className="text-2xl font-extrabold text-purple-700">
+                          ₹{course.coursePrice}
+                        </h4>
                       ) : (
-                        <span className="rounded-full bg-green-100 px-4 py-2 text-sm font-bold text-green-700">
+                        <span className="text-sm font-bold text-green-700">
                           Free Access
                         </span>
                       )}
 
-                      <div className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-bold text-yellow-700">
-                        Bestseller
-                      </div>
-                    </div>
-
-                    {/* BUTTONS */}
-                    <div className="mt-6">
-                      {Number(course.HasCourse) === 1 ? (
-                        <button
-                          onClick={() => router.push(`/course/${course.CId}`)}
-                          className="w-full rounded-2xl bg-purple-700 px-5 py-4 font-bold text-white transition hover:bg-purple-800"
-                        >
-                          Go To Course
-                        </button>
-                      ) : Number(course.CType) === 0 ? (
-                        <button className="w-full rounded-2xl bg-green-600 px-5 py-4 font-bold text-white transition hover:bg-green-700">
-                          Add To Library
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => addToCart(course)}
-                          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-purple-700 px-5 py-4 font-bold text-white transition hover:bg-purple-800"
-                        >
-                          <ShoppingCart className="h-5 w-5" />
-                          Add To Cart
-                        </button>
-                      )}
+                      <button
+                        onClick={() => router.push("/user/dashboard")}
+                        className="rounded-xl bg-purple-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-purple-800"
+                      >
+                        View Course
+                      </button>
                     </div>
                   </div>
                 </div>

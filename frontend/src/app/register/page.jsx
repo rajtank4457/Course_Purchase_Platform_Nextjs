@@ -36,7 +36,7 @@ function Register() {
     const getRegisterToken = async () => {
       try {
         await axios.post(
-          `${API_URL}/auth/register-token`,
+          `${API_URL}/auth/session-token`,
           {
             publicToken: "PUBLIC_REGISTER_TOKEN_123",
           },

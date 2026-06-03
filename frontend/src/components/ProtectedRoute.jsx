@@ -5,15 +5,13 @@ import axios from "axios";
 import { useRouter } from "next/navigation";
 import API_URL from "@/config/api";
 
-export default function ProtectedRoute({
-  children,
-  allowedRoles = [],
-}) {
+export default function ProtectedRoute({ children, allowedRoles = [] }) {
   const router = useRouter();
-
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let ignore = false;
+
     const checkAuth = async () => {
       try {
         const res = await axios.get(`${API_URL}/auth/home`, {
@@ -24,28 +22,27 @@ export default function ProtectedRoute({
 
         if (
           allowedRoles.length > 0 &&
-          !allowedRoles.includes(user.role)
+          !allowedRoles.includes(user.role) &&
+          !allowedRoles.includes(user.type)
         ) {
           router.replace("/login");
           return;
         }
 
-        setLoading(false);
-      } catch (err) {
+        if (!ignore) setLoading(false);
+      } catch {
         router.replace("/login");
       }
     };
 
     checkAuth();
-  }, [router, allowedRoles]);
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <h2>Checking authentication...</h2>
-      </div>
-    );
-  }
+    return () => {
+      ignore = true;
+    };
+  }, [router]);
+
+  if (loading) return <h2>Checking authentication...</h2>;
 
   return children;
 }
