@@ -206,6 +206,15 @@ export default function Header() {
                 <ListItemText primary="Students" />
               </ListItemButton>
             </ListItem>
+            
+            <ListItem disablePadding>
+              <ListItemButton onClick={() => router.push("/admin/admins")}>
+                <ListItemIcon>
+                  <PersonIcon />
+                </ListItemIcon>
+                <ListItemText primary="Admins" />
+              </ListItemButton>
+            </ListItem>
 
             <ListItem disablePadding>
               <ListItemButton onClick={() => router.push("/admin/orders")}>
@@ -307,14 +316,14 @@ export default function Header() {
           <nav className="flex items-center gap-6">
             <button
               onClick={goDashboard}
-              className="font-medium text-gray-700 transition hover:text-purple-700"
+              className="font-medium text-gray-700 transition hover:text-purple-700 cursor-pointer"
             >
               Dashboard
             </button>
 
             <button
               onClick={goCourses}
-              className="font-medium text-gray-700 transition hover:text-purple-700"
+              className="font-medium text-gray-700 transition hover:text-purple-700 cursor-pointer"
             >
               {isAdmin ? "Courses" : "My Courses"}
             </button>
@@ -323,14 +332,21 @@ export default function Header() {
               <>
                 <button
                   onClick={() => router.push("/admin/students")}
-                  className="font-medium text-gray-700 transition hover:text-purple-700"
+                  className="font-medium text-gray-700 transition hover:text-purple-700 cursor-pointer"
                 >
                   Students
                 </button>
 
                 <button
+                  onClick={() => router.push("/admin/admins")}
+                  className="font-medium text-gray-700 transition hover:text-purple-700 cursor-pointer"
+                >
+                  Admins
+                </button>
+
+                <button
                   onClick={() => router.push("/admin/orders")}
-                  className="font-medium text-gray-700 transition hover:text-purple-700"
+                  className="font-medium text-gray-700 transition hover:text-purple-700 cursor-pointer"
                 >
                   Orders
                 </button>
@@ -338,7 +354,7 @@ export default function Header() {
             ) : (
               <button
                 onClick={() => router.push("/user/orders")}
-                className="font-medium text-gray-700 transition hover:text-purple-700"
+                className="font-medium text-gray-700 transition hover:text-purple-700 cursor-pointer"
               >
                 My Orders
               </button>
@@ -386,7 +402,7 @@ export default function Header() {
 
           <button
             onClick={handleLogout}
-            className="hidden rounded-xl bg-red-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-red-600 sm:block"
+            className="hidden rounded-xl bg-red-500 px-5 py-2 cursor-pointer text-sm font-semibold text-white transition hover:bg-red-600 sm:block"
           >
             Logout
           </button>

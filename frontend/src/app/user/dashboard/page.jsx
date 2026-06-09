@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import API_URL from "@/config/api";
 import CourseActionButton from "./CourseActionButton";
-import { Crown, BadgeCheck, Users, PlayCircle } from "lucide-react";
+import { Crown, BadgeCheck, Users, PlayCircle, Lock } from "lucide-react";
+import CourseChapterLink from "./CourseChapterLink";
 
 async function getCourses() {
   const cookieStore = await cookies();
@@ -80,7 +81,7 @@ export default async function UserDashboard() {
                   key={course.courseId}
                   className="group overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
                 >
-                  <div className="relative aspect-video overflow-hidden bg-gray-100">
+                  <div className="relative aspect-video bg-gray-100">
                     <img
                       src={
                         course.courseImg
@@ -92,8 +93,8 @@ export default async function UserDashboard() {
                     />
 
                     {isNewCourse(course.createdAt) && (
-                      <div className="absolute right-4 top-4 rounded-full bg-red-500 px-3 py-1 text-xs font-bold text-white shadow-lg">
-                        🔥 New
+                      <div className="absolute right-[-38px] top-[18px] z-20 w-[140px] rotate-45 bg-gradient-to-r from-red-500 to-pink-600 py-1 text-center text-xs font-black tracking-wider text-white shadow-xl">
+                        NEW
                       </div>
                     )}
                   </div>
@@ -127,10 +128,10 @@ export default async function UserDashboard() {
                         1.2k Students
                       </span>
 
-                      <span className="flex items-center gap-1">
-                        <PlayCircle className="h-4 w-4" />
-                        {course.chapters?.length || 0} Chapters
-                      </span>
+                      <CourseChapterLink
+                        course={course}
+                        isInLibrary={isInLibrary}
+                      />
                     </div>
 
                     <div className="mt-6 flex items-center justify-between gap-4">

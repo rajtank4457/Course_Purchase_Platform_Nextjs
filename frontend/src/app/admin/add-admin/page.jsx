@@ -175,7 +175,7 @@ export default function AddAdminPage() {
               type="button"
               variant="outlined"
               fullWidth
-              onClick={() => router.push("/admin/dashboard")}
+              onClick={() => router.push("/admin/admins")}
             >
               Cancel
             </Button>

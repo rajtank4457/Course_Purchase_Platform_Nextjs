@@ -171,14 +171,14 @@ export const login = async (req, res) => {
                     type: "admin",
                 },
                 process.env.JWT_KEY,
-                { expiresIn: "3h" }
+                { expiresIn: "1d" }
             );
 
             res.cookie("auth_token", token, {
                 httpOnly: true,
                 secure: false,
                 sameSite: "lax",
-                maxAge: 3 * 60 * 60 * 1000,
+                maxAge: 24 * 60 * 60 * 1000,
             });
 
             return res.status(200).json({
@@ -223,14 +223,14 @@ export const login = async (req, res) => {
                 type: "user",
             },
             process.env.JWT_KEY,
-            { expiresIn: "3h" }
+            { expiresIn: "1d" }
         );
 
         res.cookie("auth_token", token, {
             httpOnly: true,
             secure: false,
             sameSite: "lax",
-            maxAge: 3 * 60 * 60 * 1000,
+            maxAge: 24 * 60 * 60 * 1000,
         });
 
         const ipAddress =

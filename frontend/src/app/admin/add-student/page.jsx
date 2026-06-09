@@ -188,7 +188,7 @@ export default function AddStudentPage() {
               type="button"
               variant="outlined"
               fullWidth
-              onClick={() => router.push("/admin/dashboard")}
+              onClick={() => router.push("/admin/students")}
             >
               Cancel
             </Button>

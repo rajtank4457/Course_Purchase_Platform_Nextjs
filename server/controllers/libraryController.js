@@ -56,43 +56,104 @@ export const addToLibrary = async (req, res) => {
     }
 };
 
-export const getMyLibrary = async (req, res) => {
+// export const getMyLibrary = async (req, res) => {
+//     try {
+//         if (req.userType !== "user") {
+//             return res.status(403).json({
+//                 success: false,
+//                 message: "Only users can access library",
+//             });
+//         }
+
+//         const db = await connectToDatabase();
+
+//         const [rows] = await db.query(
+//             `
+//       SELECT 
+//         ul.libraryId,
+//         ul.userId,
+//         ul.courseId,
+//         ul.addedAt,
+
+//         cd.courseName,
+//         cd.courseDesc,
+//         cd.courseType,
+//         cd.courseSlug,
+//         cd.coursePrice,
+//         cd.courseImg,
+//         cd.createdAt
+//       FROM user_library ul
+//       JOIN course_details cd ON ul.courseId = cd.courseId
+//       WHERE ul.userId = ?
+//       ORDER BY ul.addedAt DESC
+//       `,
+//             [req.userId]
+//         );
+
+//         return res.status(200).json({
+//             success: true,
+//             data: rows,
+//         });
+//     } catch (err) {
+//         return res.status(500).json({
+//             success: false,
+//             message: "Server Error",
+//             error: err.message,
+//         });
+//     }
+// };
+
+export const getLibraryCourses = async (req, res) => {
     try {
-        if (req.userType !== "user") {
-            return res.status(403).json({
-                success: false,
-                message: "Only users can access library",
-            });
-        }
+        const userId = req.userId;
 
         const db = await connectToDatabase();
 
-        const [rows] = await db.query(
+        const [courses] = await db.query(
             `
-      SELECT 
-        ul.libraryId,
-        ul.userId,
-        ul.courseId,
-        ul.addedAt,
-
-        cd.courseName,
-        cd.courseDesc,
-        cd.courseType,
-        cd.courseSlug,
-        cd.coursePrice,
-        cd.courseImg,
-        cd.createdAt
-      FROM user_library ul
-      JOIN course_details cd ON ul.courseId = cd.courseId
-      WHERE ul.userId = ?
-      ORDER BY ul.addedAt DESC
-      `,
-            [req.userId]
+            SELECT 
+                cd.courseId,
+                cd.courseName,
+                cd.courseDesc,
+                cd.courseType,
+                cd.courseSlug,
+                cd.coursePrice,
+                cd.courseImg,
+                cd.createdAt
+            FROM user_library ul
+            INNER JOIN course_details cd
+                ON cd.courseId = ul.courseId
+            WHERE ul.userId = ?
+            ORDER BY ul.addedAt DESC
+            `,
+            [userId]
         );
 
-        return res.status(200).json({
+        for (const course of courses) {
+            const [chapters] = await db.query(
+                `
+        SELECT
+          chId,
+          courseId,
+          chapterName,
+          chapterDesc,
+          videoUrl,
+          slug,
+          createdAt
+        FROM chapter_details
+        WHERE courseId = ?
+        ORDER BY createdAt ASC
+        `,
+                [course.courseId]
+            );
+
+            course.chapters = chapters;
+            course.chapterCount = chapters.length;
+        }
+
+        return res.json({
             success: true,
-            data: rows,
+            data: courses,
         });
     } catch (err) {
         return res.status(500).json({

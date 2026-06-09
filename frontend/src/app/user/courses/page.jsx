@@ -4,13 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import API_URL from "@/config/api";
-import {
-  ArrowLeft,
-  RotateCcw,
-  Trash2,
-  BookOpen,
-  CheckCircle,
-} from "lucide-react";
+import { ArrowLeft, BookOpen, CheckCircle } from "lucide-react";
 
 const Page = () => {
   const router = useRouter();
@@ -19,75 +13,65 @@ const Page = () => {
   const [progressMap, setProgressMap] = useState({});
   const [role, setRole] = useState("");
   const [student, setStudent] = useState(null);
+  const [userLoaded, setUserLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const savedRole = localStorage.getItem("role");
-    const savedStudent = localStorage.getItem("selectedStudent");
+  const fetchUser = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/auth/home`, {
+        withCredentials: true,
+      });
 
-    setRole(savedRole || "");
+      const user = res.data.user;
 
-    if (savedStudent) {
-      setStudent(JSON.parse(savedStudent));
+      setRole(user.role || user.type || "");
+      setStudent(user);
+      setUserLoaded(true);
+    } catch (err) {
+      router.push("/login");
     }
-  }, []);
-
-  const getStudentId = () => {
-    if (role === "admin") {
-      return student?.userId || student?.StdId;
-    }
-
-    return localStorage.getItem("userId");
   };
-
-  // const fetchProgress = async () => {
-  //   try {
-  //     const userId = getStudentId();
-
-  //     if (!userId) return;
-
-  //     const res = await axios.get(`${API_URL}/auth/progress`, {
-  //       params: { userId },
-  //       withCredentials: true,
-  //     });
-
-  //     setProgressMap(res.data.data || res.data || {});
-  //   } catch (err) {
-  //     console.log(err);
-  //   }
-  // };
 
   const fetchCourses = async () => {
     try {
-      const userId = getStudentId();
-
-      if (!userId) return;
-
       const res = await axios.get(`${API_URL}/library`, {
-        params: { userId },
         withCredentials: true,
       });
 
       setCourses(res.data.data || []);
     } catch (err) {
-      console.log(err);
-    } finally {
-      setLoading(false);
+      console.log(err.response?.data || err);
+    }
+  };
+
+  const fetchProgress = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/progress`, {
+        withCredentials: true,
+      });
+
+      setProgressMap(res.data.data || {});
+    } catch (err) {
+      console.log(err.response?.data || err);
     }
   };
 
   useEffect(() => {
-    if (!role) return;
+    fetchUser();
+  }, []);
 
-    fetchCourses();
-    // fetchProgress();
+  useEffect(() => {
+    if (!userLoaded) return;
 
-    const interval = setInterval(() => {
-      // fetchProgress();
-    }, 2000);
+    const loadData = async () => {
+      setLoading(true);
+      await fetchCourses();
+      await fetchProgress();
+      setLoading(false);
+    };
 
-    return () => clearInterval(interval);
-  }, [role, student]);
+    loadData();
+  }, [userLoaded]);
 
   const getCourseProgress = (chapters = []) => {
     if (!chapters.length) return 0;
@@ -95,64 +79,14 @@ const Page = () => {
     let total = 0;
 
     chapters.forEach((chapter) => {
-      total += Number(progressMap[chapter.chapterId] || 0);
+      total += Number(progressMap[chapter.chId] || 0);
     });
 
     return Math.round(total / chapters.length);
   };
 
-  // const handleReset = async (chapters = []) => {
-  //   try {
-  //     if (role !== "admin") {
-  //       alert("Only admin can reset course progress");
-  //       return;
-  //     }
-
-  //     const userId = getStudentId();
-
-  //     if (!userId) return;
-
-  //     await axios.post(
-  //       `${API_URL}/auth/reset-progress`,
-  //       {
-  //         userId,
-  //         role,
-  //         chapterIds: chapters.map((chapter) => chapter.chapterId),
-  //       },
-  //       { withCredentials: true }
-  //     );
-
-  //     fetchProgress();
-  //   } catch (err) {
-  //     console.log(err);
-  //   }
-  // };
-
-  // const removeCourseFromStudent = async (courseId) => {
-  //   try {
-  //     const userId = getStudentId();
-
-  //     if (!userId) return;
-
-  //     await axios.post(
-  //       `${API_URL}/auth/remove-student-course`,
-  //       {
-  //         userId,
-  //         courseId,
-  //       },
-  //       { withCredentials: true }
-  //     );
-
-  //     setCourses((prev) =>
-  //       prev.filter((course) => Number(course.courseId) !== Number(courseId))
-  //     );
-  //   } catch (err) {
-  //     console.log(err);
-  //   }
-  // };
-
   const activeCourses = courses.filter(
-    (course) => Number(course.status) !== -1
+    (course) => Number(course.status || 1) !== -1
   );
 
   if (loading) {
@@ -167,7 +101,7 @@ const Page = () => {
     <div className="min-h-screen bg-gray-50 px-6 py-10">
       {role === "admin" && (
         <button
-          onClick={() => router.push("/alluserscards")}
+          onClick={() => router.back()}
           className="mb-8 flex items-center gap-2 font-semibold text-blue-600 hover:text-blue-700"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -202,9 +136,7 @@ const Page = () => {
             </span>
 
             <h2 className="text-4xl font-bold text-gray-900">
-              {role === "admin"
-                ? `${student?.userName || student?.StdName || "Student"}'s Course Details`
-                : "Course Details"}
+              Course Details
             </h2>
           </div>
 
@@ -228,10 +160,11 @@ const Page = () => {
                       className="h-44 w-full object-cover"
                     />
                   </div>
+
                   <div className="mb-5">
                     <div className="mb-2 flex items-center justify-between">
                       <p className="font-bold text-gray-900">
-                        Course Progress
+                        Total Course Progress
                       </p>
 
                       <p className="font-bold text-green-700">
@@ -247,38 +180,14 @@ const Page = () => {
                     </div>
                   </div>
 
-                  <div className="mb-4 flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-bold text-gray-500">
-                        Course Name
-                      </p>
+                  <div className="mb-4">
+                    <p className="text-sm font-bold text-gray-500">
+                      Course Name
+                    </p>
 
-                      <h3 className="mt-1 text-xl font-bold text-gray-900">
-                        {course.courseName}
-                      </h3>
-                    </div>
-
-                    {role === "admin" && (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleReset(course.chapters)}
-                          className="rounded-lg bg-blue-600 p-2 text-white hover:bg-blue-700"
-                          title="Reset Progress"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </button>
-
-                        <button
-                          onClick={() =>
-                            removeCourseFromStudent(course.courseId)
-                          }
-                          className="rounded-lg bg-red-600 p-2 text-white hover:bg-red-700"
-                          title="Remove Course"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    )}
+                    <h3 className="mt-1 text-xl font-bold text-gray-900">
+                      {course.courseName}
+                    </h3>
                   </div>
 
                   <div className="mb-5">
@@ -292,16 +201,14 @@ const Page = () => {
                   </div>
 
                   <div className="space-y-3">
-                    {course.chapters?.map((chapter, index) => {
-                      const progress = Number(
-                        progressMap[chapter.chapterId] || 0
-                      );
+                    {(course.chapters || []).map((chapter, index) => {
+                      const progress = Number(progressMap[chapter.chId] || 0);
 
                       return (
                         <button
-                          key={chapter.chapterId}
+                          key={chapter.chId}
                           onClick={() =>
-                            router.push(`/chapterdetails/${chapter.slug}`)
+                            router.push(`/user/chapter-details/${chapter.slug}`)
                           }
                           className="relative w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-100 text-left"
                         >
@@ -316,7 +223,6 @@ const Page = () => {
                             </span>
 
                             <span className="flex shrink-0 items-center gap-1 text-xs font-bold text-blue-700">
-                              <CheckCircle className="h-3.5 w-3.5" />
                               {Math.round(progress)}%
                             </span>
                           </div>

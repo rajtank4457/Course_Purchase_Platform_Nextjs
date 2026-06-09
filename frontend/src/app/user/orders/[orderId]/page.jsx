@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import axios from "axios";
 import API_URL from "@/config/api";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
+import { generateInvoicePdf } from "@/utils/generateInvoicePdf";
+
 
 const Page = () => {
     const router = useRouter();
@@ -61,6 +63,14 @@ const Page = () => {
         );
     }
 
+    const handleDownloadInvoice = () => {
+        generateInvoicePdf({
+            order,
+            items,
+            getStatusText,
+        });
+    };
+
     return (
         <div className="min-h-screen bg-gray-50 px-6 py-10">
             <button
@@ -77,14 +87,27 @@ const Page = () => {
 
             <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-3">
                 <div className="lg:col-span-2">
-                    <div className="mb-5">
-                        <h3 className="text-2xl font-bold text-gray-900">
-                            Order ID: #{order.orderId}
-                        </h3>
+                    <div className="mb-5 flex items-start justify-between gap-4">
+                        <div>
+                            <h3 className="text-2xl font-bold text-gray-900">
+                                Order ID: #{order.orderId}
+                            </h3>
 
-                        <p className={`mt-2 font-bold ${getStatusClass(order.paymentStatus)}`}>
-                            {getStatusText(order.paymentStatus)}
-                        </p>
+                            <p className={`mt-2 font-bold ${getStatusClass(order.paymentStatus)}`}>
+                                {getStatusText(order.paymentStatus)}
+                            </p>
+                        </div>
+
+                        {order.paymentStatus === "paid" && (
+                            <button
+                                type="button"
+                                onClick={handleDownloadInvoice}
+                                title="Download Invoice"
+                                className="inline-flex items-center gap-2 cursor-pointer rounded-xl bg-purple-700 px-4 py-2 text-sm font-bold text-white hover:bg-purple-800"
+                            >
+                                <Download className="h-4 w-4" />
+                            </button>
+                        )}  
                     </div>
 
                     <div className="space-y-4">

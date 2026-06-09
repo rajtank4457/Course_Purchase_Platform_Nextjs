@@ -13,6 +13,11 @@ import libraryRoutes from "./routes/libraryRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import couponRoutes from "./routes/couponRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
+import dashboardRoutes from "./routes/dashboardRoutes.js";
+import chapterRoutes from "./routes/chapterRoutes.js";
+import progressRoutes from "./routes/progressRoutes.js";
+import examRoutes from "./routes/examRoutes.js";
+
 
 dotenv.config();
 
@@ -58,7 +63,17 @@ app.use("/coupons", couponRoutes);
 
 app.use("/payments", paymentRoutes);
 
+app.use("/dashboard", dashboardRoutes);
+
+app.use("/chapters", chapterRoutes);
+
+app.use("/progress", progressRoutes);
+
+app.use("/exams", examRoutes);
+
 /* Static Uploads */
+
+app.use("/uploads/pdfs", express.static("uploads"));
 
 app.use(
   "/uploads",
