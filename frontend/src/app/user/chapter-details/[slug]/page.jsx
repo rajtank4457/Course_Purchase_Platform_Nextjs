@@ -38,11 +38,13 @@ export default function UserChapterDetailsPage() {
     const [sourceProgress, setSourceProgress] = useState(0);
     const [openedFiles, setOpenedFiles] = useState([]);
 
-    const totalProgress =
+    const rawProgress =
         (descDone ? 25 : 0) +
         notesProgress +
         videoProgress +
         sourceProgress;
+
+    const totalProgress = rawProgress >= 99 ? 100 : rawProgress;
 
     const fetchSavedProgress = async (chId) => {
         try {
@@ -115,6 +117,13 @@ export default function UserChapterDetailsPage() {
             const rect = el.getBoundingClientRect();
             const windowHeight = window.innerHeight;
 
+            const isBottomReached = rect.bottom <= windowHeight + 20;
+
+            if (isBottomReached) {
+                setNotesProgress(25);
+                return;
+            }
+
             const elementTop = rect.top + window.scrollY;
             const elementHeight = el.offsetHeight;
             const scrollPosition = window.scrollY + windowHeight;
@@ -128,6 +137,8 @@ export default function UserChapterDetailsPage() {
         };
 
         window.addEventListener("scroll", handleScroll);
+        handleScroll();
+
         return () => window.removeEventListener("scroll", handleScroll);
     }, []);
 
@@ -143,7 +154,8 @@ export default function UserChapterDetailsPage() {
     useEffect(() => {
         if (!chapter) return;
 
-        const currentProgress = Math.round(totalProgress);
+        const currentProgress =
+            Math.round(totalProgress) >= 99 ? 100 : Math.round(totalProgress);
 
         if (currentProgress === lastSavedRef.current) return;
 
@@ -195,8 +207,8 @@ export default function UserChapterDetailsPage() {
                 lastProgress = progress;
                 setVideoProgress(Math.min(progress, 25));
             }
-
-            if (progress >= 25) {
+            if (progress >= 24.5) {
+                setVideoProgress(25);
                 clearInterval(interval);
             }
         }, 1000);

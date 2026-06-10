@@ -804,6 +804,11 @@ function MultipleChoiceForm({ basePayload }) {
       withCredentials: true,
     });
 
+    setQuestion("");
+    setMarks(1);
+    setOptions(["", "", "", ""]);
+    setCorrect([]);
+
     alert("Question saved successfully");
   };
 
@@ -852,6 +857,11 @@ function SingleChoiceForm({ basePayload }) {
       withCredentials: true,
     });
 
+    setQuestion("");
+    setMarks(1);
+    setOptions(["", "", "", ""]);
+    setCorrect(null);
+
     alert("Question saved successfully");
   };
 
@@ -894,6 +904,10 @@ function EssayForm({ basePayload }) {
     await axios.post(`${API_URL}/exams/questions/add`, payload, {
       withCredentials: true,
     });
+
+    setQuestion("");
+    setMarks(1);
+    setExpectedAnswer("");
 
     alert("Question saved successfully");
   };
@@ -959,6 +973,9 @@ function BlankQuestionForm({ type, basePayload }) {
     await axios.post(`${API_URL}/exams/questions/add`, payload, {
       withCredentials: true,
     });
+
+    setQuestion("");
+    setMarks(1);
 
     alert("Question saved successfully");
   };
@@ -1120,7 +1137,7 @@ function MarksInput({ marks, setMarks }) {
       </label>
 
       <input
-        type="number"
+        type="text"
         min="1"
         value={marks}
         onChange={(e) => setMarks(e.target.value)}
