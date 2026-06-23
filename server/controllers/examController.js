@@ -1,15 +1,11 @@
+import { safeJSON, stringifyJSON } from "../helpers/jsonHelper.js";
 import { connectToDatabase } from "../lib/db.js";
-
-const safeJSON = (value) => {
-  if (!value) return [];
-  if (Array.isArray(value)) return value;
-
-  try {
-    return JSON.parse(value);
-  } catch {
-    return [];
-  }
-};
+import {
+  evaluateSingle,
+  evaluateMultiple,
+  evaluateBlank,
+} from "../helpers/examHelper.js";
+import { notifyUser } from "../helpers/notificationHelper.js";
 
 export const addExam = async (req, res) => {
   try {
@@ -26,15 +22,14 @@ export const addExam = async (req, res) => {
       chId,
       examTitle,
       examDesc,
+      publishMode,
+      scheduledPublishAt,
       durationMinutes,
       totalMarks,
       passingMarks,
       maxAttempts,
-      accessType,
-      requireCompletion,
-      completionPercent,
+      checkingType = 0,
       isPublished,
-      selectedStudents,
     } = req.body;
 
     if (!courseId || !examTitle || !examType) {
@@ -53,6 +48,47 @@ export const addExam = async (req, res) => {
 
     const db = await connectToDatabase();
 
+    if (examType === "course") {
+      const [exists] = await db.query(
+        `
+        SELECT examId
+        FROM exam_details
+        WHERE courseId = ?
+        AND examType = 'course'
+        LIMIT 1
+        `,
+        [courseId]
+      );
+
+      if (exists.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: "Course test already exists for this course",
+        });
+      }
+    }
+
+    if (examType === "chapter") {
+      const [exists] = await db.query(
+        `
+        SELECT examId
+        FROM exam_details
+        WHERE courseId = ?
+        AND chId = ?
+        AND examType = 'chapter'
+        LIMIT 1
+        `,
+        [courseId, chId]
+      );
+
+      if (exists.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: "Chapter test already exists for this chapter",
+        });
+      }
+    }
+
     const [result] = await db.query(
       `
       INSERT INTO exam_details
@@ -62,13 +98,13 @@ export const addExam = async (req, res) => {
         examType,
         examTitle,
         examDesc,
+        publishMode,
+        scheduledPublishAt,
         durationMinutes,
         totalMarks,
         passingMarks,
         maxAttempts,
-        accessType,
-        requireCompletion,
-        completionPercent,
+        checkingType,
         isPublished,
         createdBy
       )
@@ -80,47 +116,26 @@ export const addExam = async (req, res) => {
         examType,
         examTitle,
         examDesc || null,
+        publishMode || "manual",
+        publishMode === "scheduled" ? scheduledPublishAt : null,
         durationMinutes || 30,
         totalMarks || 0,
         passingMarks || 0,
         maxAttempts || 1,
-        accessType || "all_course_students",
-        requireCompletion ?? 1,
-        completionPercent || 100,
-        isPublished || 0,
+        Number(checkingType || 0),
+        publishMode === "scheduled" ? 0 : Number(isPublished || 0),
         req.userId,
       ]
     );
 
-    const examId = result.insertId;
-
-    if (
-      accessType === "specific_students" &&
-      Array.isArray(selectedStudents) &&
-      selectedStudents.length > 0
-    ) {
-      const values = selectedStudents.map((userId) => [
-        examId,
-        userId,
-        1,
-      ]);
-
-      await db.query(
-        `
-        INSERT INTO exam_access_users
-        (examId, userId, canAttempt)
-        VALUES ?
-        `,
-        [values]
-      );
-    }
-
     return res.status(201).json({
       success: true,
-      message: "Exam created successfully",
-      examId,
+      message: "Exam details saved successfully",
+      examId: result.insertId,
     });
   } catch (err) {
+    console.log("ADD EXAM ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -143,9 +158,9 @@ export const addExamQuestion = async (req, res) => {
       questionType,
       questionText,
       displayText,
-      options,
-      correctAnswers,
-      marks,
+      options = [],
+      correctAnswers = [],
+      marks = 1,
     } = req.body;
 
     if (!examId || !questionType || !questionText) {
@@ -177,18 +192,19 @@ export const addExamQuestion = async (req, res) => {
         options,
         correctAnswers,
         marks,
-        sequenceNo
+        sequenceNo,
+        isActive
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
       `,
       [
-        examId,
+        Number(examId),
         questionType,
         questionText,
         displayText || questionText,
-        JSON.stringify(options || []),
-        JSON.stringify(correctAnswers || []),
-        marks || 1,
+        stringifyJSON(options),
+        stringifyJSON(correctAnswers),
+        Number(marks) || 1,
         lastSeq[0].nextSeq,
       ]
     );
@@ -198,6 +214,90 @@ export const addExamQuestion = async (req, res) => {
       message: "Question added successfully",
     });
   } catch (err) {
+    console.log("ADD QUESTION ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+};
+
+export const updateExamAccessRules = async (req, res) => {
+  try {
+    if (req.userType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can update access rules",
+      });
+    }
+
+    const {
+      examId,
+      requireCompletion,
+      completionPercent,
+      accessType,
+      checkingType = 0,
+      selectedStudents = [],
+    } = req.body;
+
+    if (!examId) {
+      return res.status(400).json({
+        success: false,
+        message: "Exam ID is required",
+      });
+    }
+
+    const db = await connectToDatabase();
+
+    await db.query(
+      `
+      UPDATE exam_details
+      SET
+        requireCompletion = ?,
+        completionPercent = ?,
+        accessType = ?,
+        checkingType = ?
+      WHERE examId = ?
+      `,
+      [
+        Number(requireCompletion),
+        Number(completionPercent),
+        accessType,
+        Number(checkingType || 0),
+        examId,
+      ]
+    );
+
+    await db.query(
+      `
+      DELETE FROM exam_access_users
+      WHERE examId = ?
+      `,
+      [examId]
+    );
+
+    if (accessType === "specific_students" && selectedStudents.length > 0) {
+      const values = selectedStudents.map((userId) => [examId, userId, 1]);
+
+      await db.query(
+        `
+        INSERT INTO exam_access_users
+        (examId, userId, canAttempt)
+        VALUES ?
+        `,
+        [values]
+      );
+    }
+
+    return res.json({
+      success: true,
+      message: "Access rules updated successfully",
+    });
+  } catch (err) {
+    console.log("UPDATE EXAM ACCESS RULES ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -216,6 +316,7 @@ export const publishExam = async (req, res) => {
     }
 
     const { examId } = req.body;
+    const io = req.app.get("io");
 
     if (!examId) {
       return res.status(400).json({
@@ -242,20 +343,91 @@ export const publishExam = async (req, res) => {
       });
     }
 
-    await db.query(
+    const [examRows] = await db.query(
       `
-      UPDATE exam_details
-      SET isPublished = 1
+      SELECT examId, examTitle, courseId, examType, accessType
+      FROM exam_details
       WHERE examId = ?
       `,
       [examId]
     );
+
+    const exam = examRows[0];
+
+    await db.query(
+      `
+      UPDATE exam_details
+      SET isPublished = 1,
+          publishedAt = NOW()
+      WHERE examId = ?
+      `,
+      [examId]
+    );
+
+    let students = [];
+
+    if (exam.accessType === "specific_students") {
+      const [rows] = await db.query(
+        `
+        SELECT DISTINCT eau.userId
+        FROM exam_access_users eau
+        INNER JOIN user_details u ON u.userId = eau.userId
+        WHERE eau.examId = ?
+        AND eau.canAttempt = 1
+        `,
+        [exam.examId]
+      );
+
+      students = rows;
+    } else {
+      const [rows] = await db.query(
+        `
+        SELECT DISTINCT ul.userId
+        FROM user_library ul
+        INNER JOIN user_details u 
+          ON u.userId = ul.userId
+        WHERE ul.courseId = ?
+        AND u.isActive = 1
+        `,
+        [exam.courseId]
+      );
+
+      students = rows;
+    }
+
+    for (const student of students) {
+      const title =
+        exam.examType === "chapter"
+          ? "New Chapter Test Published"
+          : "New Course Test Published";
+
+      const message = `${exam.examTitle} is now available.`;
+
+      await notifyUser(db, io, {
+        userId: student.userId,
+        title,
+        message,
+        type: "exam",
+        examId: exam.examId,
+      });
+    }
+
+    io?.to("admins").emit("newNotification", {
+      title: "Exam Published",
+      message: `${exam.examTitle} has been published.`,
+      type: "exam",
+      examId: exam.examId,
+      isRead: 0,
+      createdAt: new Date().toISOString(),
+    });
 
     return res.status(200).json({
       success: true,
       message: "Exam published successfully",
     });
   } catch (err) {
+    console.log("PUBLISH EXAM ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -285,20 +457,28 @@ export const getAvailableExams = async (req, res) => {
         e.requireCompletion,
         e.completionPercent,
         e.accessType,
+        e.checkingType,
+        c.courseName,
+        chx.chapterName,
 
         COUNT(DISTINCT ch.chId) AS totalChapters,
 
-        COALESCE(
-          ROUND(AVG(COALESCE(ucp.progress, 0))),
-          0
-        ) AS courseProgress,
+        COALESCE(ROUND(AVG(COALESCE(ucp.progress, 0))), 0) AS courseProgress,
 
-        COALESCE(
-          MAX(chp.progress),
-          0
-        ) AS chapterProgress,
+        COALESCE(MAX(chp.progress), 0) AS chapterProgress,
 
-        COUNT(DISTINCT ea.attemptId) AS attemptCount
+        (
+          SELECT COUNT(*)
+          FROM exam_attempts ea3
+          WHERE ea3.examId = e.examId
+          AND ea3.userId = ?
+          AND ea3.status IN ('PASS', 'FAIL', 'PENDING_CHECK')
+        ) AS attemptCount,
+
+        latest_attempt.attemptId AS attemptId,
+        latest_attempt.status AS attemptStatus,
+        latest_attempt.obtainedMarks AS obtainedMarks,
+        latest_attempt.totalMarks AS attemptTotalMarks
 
       FROM exam_details e
 
@@ -322,9 +502,22 @@ export const getAvailableExams = async (req, res) => {
         ON chp.chId = e.chId
         AND chp.userId = ?
 
-      LEFT JOIN exam_attempts ea
-        ON ea.examId = e.examId
-        AND ea.userId = ?
+      LEFT JOIN exam_attempts latest_attempt
+        ON latest_attempt.attemptId = (
+          SELECT ea2.attemptId
+          FROM exam_attempts ea2
+          WHERE ea2.examId = e.examId
+          AND ea2.userId = ?
+          AND ea2.submittedAt IS NOT NULL
+          ORDER BY ea2.attemptId DESC
+          LIMIT 1
+        )
+
+      INNER JOIN course_details c
+        ON c.courseId = e.courseId
+
+      LEFT JOIN chapter_details chx
+        ON chx.chId = e.chId
 
       WHERE e.isPublished = 1
       AND e.isActive = 1
@@ -346,11 +539,18 @@ export const getAvailableExams = async (req, res) => {
         e.maxAttempts,
         e.requireCompletion,
         e.completionPercent,
-        e.accessType
+        e.accessType,
+        e.checkingType,
+        c.courseName,
+        chx.chapterName,
+        latest_attempt.attemptId,
+        latest_attempt.status,
+        latest_attempt.obtainedMarks,
+        latest_attempt.totalMarks
 
       ORDER BY e.examId DESC
       `,
-      [userId, userId, userId, userId, userId]
+      [userId, userId, userId, userId, userId, userId]
     );
 
     const data = rows.map((exam) => {
@@ -361,6 +561,21 @@ export const getAvailableExams = async (req, res) => {
 
       let canStart = true;
       let lockReason = null;
+
+      const attemptStatus = exam.attemptStatus;
+
+      const hasResult =
+        Number(exam.attemptId) > 0 &&
+        ["PASS", "FAIL", "PENDING_CHECK"].includes(attemptStatus);
+
+      const isPendingCheck =
+        Number(exam.attemptId) > 0 && attemptStatus === "PENDING_CHECK";
+
+      const isPassed =
+        Number(exam.attemptId) > 0 && attemptStatus === "PASS";
+
+      const isFailed =
+        Number(exam.attemptId) > 0 && attemptStatus === "FAIL";
 
       if (Number(exam.requireCompletion) === 1) {
         if (currentProgress < Number(exam.completionPercent)) {
@@ -378,11 +593,27 @@ export const getAvailableExams = async (req, res) => {
         lockReason = "Attempt limit reached.";
       }
 
+      if (isPassed || isPendingCheck) {
+        canStart = false;
+        lockReason = null;
+      }
+
+      if (isFailed && Number(exam.attemptCount) < Number(exam.maxAttempts)) {
+        canStart = true;
+        lockReason = null;
+      }
+
       return {
         ...exam,
         currentProgress,
         canStart,
         lockReason,
+        hasResult,
+        isPassed,
+        isFailed,
+        isPendingCheck,
+        canTryAgain:
+          isFailed && Number(exam.attemptCount) < Number(exam.maxAttempts),
       };
     });
 
@@ -391,6 +622,8 @@ export const getAvailableExams = async (req, res) => {
       data,
     });
   } catch (err) {
+    console.log("GET AVAILABLE EXAMS ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -511,10 +744,12 @@ export const startExam = async (req, res) => {
 
     const [attempts] = await db.query(
       `
-      SELECT COUNT(*) AS total
-      FROM exam_attempts
-      WHERE examId = ? AND userId = ?
-      `,
+        SELECT COUNT(*) AS total
+        FROM exam_attempts
+        WHERE examId = ? 
+        AND userId = ?
+        AND status IN ('PASS', 'FAIL')
+        `,
       [examId, userId]
     );
 
@@ -566,8 +801,10 @@ export const getExamStartInfo = async (req, res) => {
       `
       SELECT
         e.*,
-        COUNT(eq.questionId) AS questionCount,
-        COUNT(ea.attemptId) AS attemptCount
+        COUNT(DISTINCT eq.questionId) AS questionCount,
+        COUNT(DISTINCT CASE 
+        WHEN ea.status IN ('PASS', 'FAIL') THEN ea.attemptId 
+        END) AS attemptCount
       FROM exam_details e
 
       INNER JOIN user_library ul
@@ -663,6 +900,7 @@ export const getExamAttemptQuestions = async (req, res) => {
         questionText,
         displayText,
         options,
+        correctAnswers,
         marks,
         sequenceNo
       FROM exam_questions
@@ -680,6 +918,8 @@ export const getExamAttemptQuestions = async (req, res) => {
         questions: questions.map((q) => ({
           ...q,
           options: safeJSON(q.options),
+          correctAnswers:
+            q.questionType === "essay" ? safeJSON(q.correctAnswers) : [],
         })),
       },
     });
@@ -700,7 +940,7 @@ export const submitExam = async (req, res) => {
 
     const [attemptRows] = await db.query(
       `
-      SELECT ea.*, e.passingMarks
+      SELECT ea.*, e.passingMarks, e.checkingType
       FROM exam_attempts ea
       INNER JOIN exam_details e ON e.examId = ea.examId
       WHERE ea.attemptId = ?
@@ -736,33 +976,45 @@ export const submitExam = async (req, res) => {
       const correctAnswers = safeJSON(q.correctAnswers);
 
       let isCorrect = false;
+      let marks = 0;
+      let evaluation = null;
+      let feedback = null;
 
-      if (q.questionType === "single") {
-        isCorrect = correctAnswers.some((c) => c.answer === submitted);
-      }
-
-      if (q.questionType === "multiple") {
-        const correct = correctAnswers.map((c) => c.answer).sort();
-        const given = Array.isArray(submitted) ? [...submitted].sort() : [];
-
-        isCorrect =
-          correct.length === given.length &&
-          correct.every((ans, index) => ans === given[index]);
-      }
-
-      if (
+      if (q.questionType === "essay") {
+        if (Number(attempt.checkingType) === 1) {
+          isCorrect = null;
+          marks = 0;
+          evaluation = {
+            status: "PENDING_CHECK",
+            message: "Essay answer requires manual checking by admin.",
+          };
+          feedback = "Pending manual checking.";
+        } else {
+          isCorrect = false;
+          marks = 0;
+          evaluation = {
+            status: "AUTO_MODE_ESSAY_SKIPPED",
+            message: "Essay question is not allowed in auto checking exam.",
+          };
+          feedback = "Essay question is not allowed for auto checking exam.";
+        }
+      } else if (q.questionType === "single") {
+        const result = evaluateSingle(submitted, correctAnswers, q.marks);
+        isCorrect = result.isCorrect;
+        marks = result.marks;
+      } else if (q.questionType === "multiple") {
+        const result = evaluateMultiple(submitted, correctAnswers, q.marks);
+        isCorrect = result.isCorrect;
+        marks = result.marks;
+      } else if (
         q.questionType === "dropdown_blank" ||
         q.questionType === "drag_drop_blank"
       ) {
-        const correct = correctAnswers.map((c) => c.answer).sort();
-        const given = Array.isArray(submitted) ? [...submitted].sort() : [];
-
-        isCorrect =
-          correct.length === given.length &&
-          correct.every((ans, index) => ans === given[index]);
+        const result = evaluateBlank(submitted, correctAnswers, q.marks);
+        isCorrect = result.isCorrect;
+        marks = result.marks;
       }
 
-      const marks = isCorrect ? Number(q.marks) : 0;
       obtainedMarks += marks;
 
       await db.query(
@@ -773,22 +1025,33 @@ export const submitExam = async (req, res) => {
           questionId,
           submittedAnswer,
           isCorrect,
-          obtainedMarks
+          obtainedMarks,
+          evaluation,
+          feedback
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         `,
         [
           attemptId,
           q.questionId,
-          JSON.stringify(submitted || null),
-          isCorrect ? 1 : 0,
+          stringifyJSON(submitted ?? null),
+          isCorrect === null ? null : isCorrect ? 1 : 0,
           marks,
+          evaluation ? stringifyJSON(evaluation) : null,
+          feedback,
         ]
       );
     }
 
-    const finalStatus =
-      obtainedMarks >= Number(attempt.passingMarks) ? "passed" : "failed";
+    const hasManualEssay =
+      Number(attempt.checkingType) === 1 &&
+      questions.some((q) => q.questionType === "essay");
+
+    const finalStatus = hasManualEssay
+      ? "PENDING_CHECK"
+      : obtainedMarks >= Number(attempt.passingMarks)
+        ? "PASS"
+        : "FAIL";
 
     await db.query(
       `
@@ -806,8 +1069,12 @@ export const submitExam = async (req, res) => {
       success: true,
       message: "Exam submitted",
       attemptId,
+      obtainedMarks,
+      status: finalStatus,
     });
   } catch (err) {
+    console.log("SUBMIT EXAM ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -826,17 +1093,20 @@ export const getExamResult = async (req, res) => {
       `
       SELECT
         ea.attemptId,
+        ea.examId,
         ea.totalMarks,
         ea.obtainedMarks,
         ea.status,
         ea.submittedAt,
         e.examTitle,
-        e.passingMarks
+        e.passingMarks,
+        e.maxAttempts
       FROM exam_attempts ea
       INNER JOIN exam_details e
         ON e.examId = ea.examId
       WHERE ea.attemptId = ?
       AND ea.userId = ?
+      LIMIT 1
       `,
       [attemptId, userId]
     );
@@ -845,6 +1115,444 @@ export const getExamResult = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Result not found",
+      });
+    }
+
+    const result = rows[0];
+
+    const [attemptCountRows] = await db.query(
+      `
+      SELECT COUNT(*) AS usedAttempts
+      FROM exam_attempts
+      WHERE examId = ?
+      AND userId = ?
+      AND status IN ('PASS', 'FAIL')
+      `,
+      [result.examId, userId]
+    );
+
+    const usedAttempts = Number(attemptCountRows[0]?.usedAttempts || 0);
+    const maxAttempts = Number(result.maxAttempts || 1);
+    const remainingAttempts = Math.max(maxAttempts - usedAttempts, 0);
+    const canTryAgain = result.status === "FAIL" && remainingAttempts > 0;
+
+    const [questionRows] = await db.query(
+      `
+      SELECT
+        q.questionId,
+        q.questionType,
+        q.questionText,
+        q.displayText,
+        q.options,
+        q.correctAnswers,
+        q.marks,
+        aa.submittedAnswer AS userAnswer,
+        aa.isCorrect,
+        aa.obtainedMarks AS questionObtainedMarks,
+        aa.evaluation,
+        aa.feedback
+      FROM exam_questions q
+      LEFT JOIN exam_attempt_answers aa
+        ON aa.questionId = q.questionId
+        AND aa.attemptId = ?
+      WHERE q.examId = ?
+      ORDER BY q.questionId ASC
+      `,
+      [attemptId, result.examId]
+    );
+
+    const questions = questionRows.map((q) => {
+      const options = safeJSON(q.options, []);
+      const correctAnswers = safeJSON(q.correctAnswers, []);
+      const evaluation = safeJSON(q.evaluation, null);
+      const userAnswer = safeJSON(q.userAnswer, q.userAnswer);
+
+      return {
+        ...q,
+        options,
+        correctAnswers,
+        userAnswer,
+        evaluation,
+        feedback: q.feedback,
+        isCorrect: Number(q.isCorrect) === 1,
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        ...result,
+        usedAttempts,
+        maxAttempts,
+        remainingAttempts,
+        canTryAgain,
+        questions,
+      },
+    });
+  } catch (err) {
+    console.log("GET EXAM RESULT ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+};
+
+export const getExamQuestionsAdmin = async (req, res) => {
+  try {
+    const { examId } = req.params;
+    const db = await connectToDatabase();
+
+    const [rows] = await db.query(
+      `
+      SELECT *
+      FROM exam_questions
+      WHERE examId = ?
+      AND isActive = 1
+      ORDER BY sequenceNo ASC
+      `,
+      [examId]
+    );
+
+    return res.json({
+      success: true,
+      data: rows.map((q) => ({
+        ...q,
+        options: safeJSON(q.options),
+        correctAnswers: safeJSON(q.correctAnswers),
+      })),
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+};
+
+export const updateExamQuestion = async (req, res) => {
+  try {
+    const {
+      questionId,
+      questionType,
+      questionText,
+      displayText,
+      options = [],
+      correctAnswers = [],
+      marks = 1,
+    } = req.body;
+
+    const db = await connectToDatabase();
+
+    await db.query(
+      `
+      UPDATE exam_questions
+      SET
+        questionType = ?,
+        questionText = ?,
+        displayText = ?,
+        options = ?,
+        correctAnswers = ?,
+        marks = ?
+      WHERE questionId = ?
+      `,
+      [
+        questionType,
+        questionText,
+        displayText || questionText,
+        stringifyJSON(options),
+        stringifyJSON(correctAnswers),
+        Number(marks) || 1,
+        questionId,
+      ]
+    );
+
+    return res.json({
+      success: true,
+      message: "Question updated successfully",
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+};
+
+export const deleteExamQuestion = async (req, res) => {
+  try {
+    const { questionId } = req.body;
+    const db = await connectToDatabase();
+
+    await db.query(
+      `
+      UPDATE exam_questions
+      SET isActive = 0
+      WHERE questionId = ?
+      `,
+      [questionId]
+    );
+
+    return res.json({
+      success: true,
+      message: "Question deleted successfully",
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+};
+
+export const getAllExams = async (req, res) => {
+  try {
+    if (req.userType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can view exams",
+      });
+    }
+
+    const db = await connectToDatabase();
+
+    const [rows] = await db.query(`
+      SELECT
+        examId,
+        courseId,
+        chId,
+        examType,
+        examTitle,
+        examDesc,
+        publishMode,
+        scheduledPublishAt,
+        publishedAt,
+        durationMinutes,
+        totalMarks,
+        passingMarks,
+        maxAttempts,
+        accessType,
+        checkingType,
+        requireCompletion,
+        completionPercent,
+        isPublished,
+        isActive,
+        createdBy,
+        createdAt,
+        updatedAt
+      FROM exam_details
+      ORDER BY examId DESC
+    `);
+
+    return res.status(200).json({
+      success: true,
+      data: rows,
+    });
+  } catch (err) {
+    console.log("GET ALL EXAMS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+};
+
+export const deleteExam = async (req, res) => {
+  try {
+    if (req.userType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can delete exam",
+      });
+    }
+
+    const { examId } = req.body;
+
+    if (!examId) {
+      return res.status(400).json({
+        success: false,
+        message: "Exam ID is required",
+      });
+    }
+
+    const db = await connectToDatabase();
+
+    const [exists] = await db.query(
+      `SELECT examId FROM exam_details WHERE examId = ? LIMIT 1`,
+      [examId]
+    );
+
+    if (exists.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found",
+      });
+    }
+
+    await db.query(`DELETE FROM exam_details WHERE examId = ?`, [examId]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Exam deleted successfully",
+    });
+  } catch (err) {
+    console.log("DELETE EXAM ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+};
+
+export const updateExam = async (req, res) => {
+  try {
+    if (req.userType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can update exam",
+      });
+    }
+
+    const {
+      examId,
+      examType,
+      courseId,
+      chId,
+      examTitle,
+      examDesc,
+      publishMode,
+      scheduledPublishAt,
+      durationMinutes,
+      totalMarks,
+      passingMarks,
+      maxAttempts,
+      checkingType = 0,
+      isPublished,
+    } = req.body;
+
+    if (!examId) {
+      return res.status(400).json({
+        success: false,
+        message: "Exam ID is required",
+      });
+    }
+
+    const db = await connectToDatabase();
+
+    const [publishedRows] = await db.query(
+      `
+      SELECT isPublished
+      FROM exam_details
+      WHERE examId = ?
+      LIMIT 1
+      `,
+      [examId]
+    );
+
+    if (publishedRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found",
+      });
+    }
+
+    if (Number(publishedRows[0].isPublished) === 1) {
+      return res.status(403).json({
+        success: false,
+        message: "Published exam cannot be edited",
+      });
+    }
+
+    await db.query(
+      `
+      UPDATE exam_details
+      SET
+        examType = ?,
+        courseId = ?,
+        chId = ?,
+        examTitle = ?,
+        examDesc = ?,
+        publishMode = ?,
+        scheduledPublishAt = ?,
+        durationMinutes = ?,
+        totalMarks = ?,
+        passingMarks = ?,
+        maxAttempts = ?,
+        checkingType = ?,
+        isPublished = ?
+      WHERE examId = ?
+      `,
+      [
+        examType,
+        courseId,
+        examType === "chapter" ? chId : null,
+        examTitle,
+        examDesc || null,
+        publishMode || "manual",
+        publishMode === "scheduled"
+          ? scheduledPublishAt
+          : null,
+        durationMinutes || 30,
+        totalMarks || 0,
+        passingMarks || 0,
+        maxAttempts || 1,
+        Number(checkingType || 0),
+        isPublished || 0,
+        examId,
+      ],
+    );
+
+    return res.json({
+      success: true,
+      message: "Exam updated successfully",
+      examId,
+    });
+  } catch (err) {
+    console.log("UPDATE EXAM ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+};
+
+export const getExamById = async (req, res) => {
+  try {
+    if (req.userType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can view exam",
+      });
+    }
+
+    const { examId } = req.params;
+    const db = await connectToDatabase();
+
+    const [rows] = await db.query(
+      `
+      SELECT *
+      FROM exam_details
+      WHERE examId = ?
+      LIMIT 1
+      `,
+      [examId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found",
       });
     }
 
@@ -857,6 +1565,416 @@ export const getExamResult = async (req, res) => {
       success: false,
       message: "Server Error",
       error: err.message,
+    });
+  }
+};
+
+export const getPendingEssayAttempts = async (req, res) => {
+  try {
+    if (req.userType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can view pending essays",
+      });
+    }
+
+    const db = await connectToDatabase();
+
+    const [rows] = await db.query(`
+      SELECT
+        ea.attemptId,
+        ea.examId,
+        ea.userId,
+        ea.totalMarks,
+        ea.obtainedMarks,
+        ea.status,
+        ea.submittedAt,
+
+        e.examTitle,
+        e.examType,
+        e.passingMarks,
+
+        c.courseName,
+        ch.chapterName,
+
+        CONCAT(u.firstName, ' ', u.lastName) AS studentName,
+        u.email,
+
+        COUNT(eq.questionId) AS essayQuestionCount
+
+      FROM exam_attempts ea
+
+      INNER JOIN exam_details e
+        ON e.examId = ea.examId
+
+      INNER JOIN course_details c
+        ON c.courseId = e.courseId
+
+      LEFT JOIN chapter_details ch
+        ON ch.chId = e.chId
+
+      INNER JOIN user_details u
+        ON u.userId = ea.userId
+
+      INNER JOIN exam_questions eq
+        ON eq.examId = e.examId
+        AND eq.questionType = 'essay'
+        AND eq.isActive = 1
+
+      WHERE ea.status = 'PENDING_CHECK'
+      AND ea.submittedAt IS NOT NULL
+
+      GROUP BY
+        ea.attemptId,
+        ea.examId,
+        ea.userId,
+        ea.totalMarks,
+        ea.obtainedMarks,
+        ea.status,
+        ea.submittedAt,
+        e.examTitle,
+        e.examType,
+        e.passingMarks,
+        c.courseName,
+        ch.chapterName,
+        u.firstName,
+        u.lastName,
+        u.email
+
+      ORDER BY ea.submittedAt DESC
+    `);
+
+    return res.json({
+      success: true,
+      data: rows,
+    });
+  } catch (err) {
+    console.log("GET PENDING ESSAYS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+};
+
+export const getEssayCheckDetails = async (req, res) => {
+  try {
+    if (req.userType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can check essays",
+      });
+    }
+
+    const { attemptId } = req.params;
+    const db = await connectToDatabase();
+
+    const [attemptRows] = await db.query(
+      `
+      SELECT
+        ea.attemptId,
+        ea.examId,
+        ea.userId,
+        ea.totalMarks AS attemptTotalMarks,
+        ea.obtainedMarks AS attemptObtainedMarks,
+        ea.status,
+
+        e.examTitle,
+        e.passingMarks,
+        e.checkingType,
+
+        c.courseName,
+
+        CONCAT(u.firstName, ' ', u.lastName) AS studentName,
+        u.email
+      FROM exam_attempts ea
+      INNER JOIN exam_details e ON e.examId = ea.examId
+      INNER JOIN course_details c ON c.courseId = e.courseId
+      INNER JOIN user_details u ON u.userId = ea.userId
+      WHERE ea.attemptId = ?
+      AND ea.status = 'PENDING_CHECK'
+      LIMIT 1
+      `,
+      [attemptId]
+    );
+
+    if (attemptRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Pending attempt not found",
+      });
+    }
+
+    const attempt = attemptRows[0];
+
+    const [questionRows] = await db.query(
+      `
+      SELECT
+        q.questionId,
+        q.questionType,
+        q.questionText,
+        q.displayText,
+        q.options,
+        q.correctAnswers,
+        q.marks AS totalMarks,
+
+        aa.answerId,
+        aa.submittedAnswer,
+        aa.isCorrect,
+        aa.obtainedMarks,
+        aa.feedback,
+        aa.evaluation
+      FROM exam_questions q
+      LEFT JOIN exam_attempt_answers aa
+        ON aa.questionId = q.questionId
+        AND aa.attemptId = ?
+      WHERE q.examId = ?
+      AND q.isActive = 1
+      ORDER BY q.sequenceNo ASC
+      `,
+      [attemptId, attempt.examId]
+    );
+
+    const questions = questionRows.map((q) => ({
+      ...q,
+      questionText: q.displayText || q.questionText,
+      options: safeJSON(q.options, []),
+      correctAnswers: safeJSON(q.correctAnswers, []),
+      studentAnswer: safeJSON(q.submittedAnswer, q.submittedAnswer),
+      evaluation: safeJSON(q.evaluation, null),
+      totalMarks: Number(q.totalMarks || 0),
+      obtainedMarks: Number(q.obtainedMarks || 0),
+      isEssay: q.questionType === "essay",
+      isChecked:
+        q.questionType !== "essay" ||
+        safeJSON(q.evaluation, {})?.manualCheck === true,
+    }));
+
+    return res.json({
+      success: true,
+      data: {
+        ...attempt,
+        questions,
+      },
+    });
+  } catch (err) {
+    console.log("GET ESSAY CHECK DETAILS ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+};
+
+export const checkEssayManually = async (req, res) => {
+  try {
+    if (req.userType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can check essay answers",
+      });
+    }
+
+    const { attemptId, answerId, obtainedMarks, adminRemark } = req.body;
+
+    if (!attemptId || !answerId || obtainedMarks === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "Attempt ID, Answer ID and marks are required",
+      });
+    }
+
+    const db = await connectToDatabase();
+
+    const [answerRows] = await db.query(
+      `
+      SELECT
+        aa.answerId,
+        aa.attemptId,
+        aa.questionId,
+        q.marks
+      FROM exam_attempt_answers aa
+      INNER JOIN exam_questions q ON q.questionId = aa.questionId
+      WHERE aa.answerId = ?
+      AND aa.attemptId = ?
+      AND q.questionType = 'essay'
+      LIMIT 1
+      `,
+      [answerId, attemptId]
+    );
+
+    if (answerRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Essay answer not found",
+      });
+    }
+
+    const answer = answerRows[0];
+
+    if (Number(obtainedMarks) > Number(answer.marks)) {
+      return res.status(400).json({
+        success: false,
+        message: "Marks cannot be greater than question marks",
+      });
+    }
+
+    await db.query(
+      `
+      UPDATE exam_attempt_answers
+      SET
+        obtainedMarks = ?,
+        isCorrect = ?,
+        feedback = ?,
+        evaluation = ?
+      WHERE answerId = ?
+      `,
+      [
+        Number(obtainedMarks),
+        Number(obtainedMarks) >= Number(answer.marks) * 0.4 ? 1 : 0,
+        adminRemark || null,
+        stringifyJSON({
+          checkedBy: req.userId,
+          checkedAt: new Date().toISOString(),
+          manualCheck: true,
+        }),
+        answerId,
+      ]
+    );
+
+    const [pendingEssayRows] = await db.query(
+      `
+      SELECT COUNT(*) AS pendingCount
+      FROM exam_attempt_answers aa
+      INNER JOIN exam_questions q ON q.questionId = aa.questionId
+      WHERE aa.attemptId = ?
+      AND q.questionType = 'essay'
+      AND (
+        aa.evaluation IS NULL
+        OR JSON_EXTRACT(aa.evaluation, '$.manualCheck') IS NULL
+        OR JSON_EXTRACT(aa.evaluation, '$.manualCheck') = false
+      )
+      `,
+      [attemptId]
+    );
+
+    const pendingCount = Number(pendingEssayRows[0]?.pendingCount || 0);
+
+    if (pendingCount > 0) {
+      return res.json({
+        success: true,
+        message: "Essay answer saved. More essays pending.",
+        completed: false,
+      });
+    }
+
+    const [sumRows] = await db.query(
+      `
+      SELECT COALESCE(SUM(obtainedMarks), 0) AS finalObtainedMarks
+      FROM exam_attempt_answers
+      WHERE attemptId = ?
+      `,
+      [attemptId]
+    );
+
+    const finalObtainedMarks = Number(sumRows[0].finalObtainedMarks || 0);
+
+    const [attemptRows] = await db.query(
+      `
+      SELECT
+        ea.userId,
+        ea.examId,
+        e.examTitle,
+        e.passingMarks
+      FROM exam_attempts ea
+      INNER JOIN exam_details e ON e.examId = ea.examId
+      WHERE ea.attemptId = ?
+      LIMIT 1
+      `,
+      [attemptId]
+    );
+
+    const attempt = attemptRows[0];
+    const finalStatus =
+      finalObtainedMarks >= Number(attempt.passingMarks) ? "PASS" : "FAIL";
+
+    await db.query(
+      `
+      UPDATE exam_attempts
+      SET obtainedMarks = ?, status = ?
+      WHERE attemptId = ?
+      `,
+      [finalObtainedMarks, finalStatus, attemptId]
+    );
+
+    const io = req.app.get("io");
+
+    await notifyUser(db, io, {
+      userId: attempt.userId,
+      title: "Exam Result Published",
+      message: `${attempt.examTitle} result is now available. Status: ${finalStatus}`,
+      type: "exam_result",
+      examId: attempt.examId,
+      attemptId,
+    });
+
+    return res.json({
+      success: true,
+      message: "All essays checked successfully",
+      completed: true,
+      obtainedMarks: finalObtainedMarks,
+      status: finalStatus,
+    });
+  } catch (err) {
+    console.log("CHECK ESSAY MANUALLY ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message,
+    });
+  }
+};
+
+export const updateQuestionSequence = async (req, res) => {
+  try {
+    const { examId, questions } = req.body;
+
+    if (!examId || !Array.isArray(questions)) {
+      return res.status(400).json({
+        success: false,
+        message: "examId and questions are required",
+      });
+    }
+
+    const db = await connectToDatabase();
+
+    for (const item of questions) {
+      await db.query(
+        `
+        UPDATE exam_questions
+        SET sequenceNo = ?
+        WHERE questionId = ?
+        AND examId = ?
+        `,
+        [item.sequenceNo, item.questionId, examId]
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Question sequence updated successfully",
+    });
+  } catch (error) {
+    console.error("UPDATE QUESTION SEQUENCE ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update question sequence",
     });
   }
 };

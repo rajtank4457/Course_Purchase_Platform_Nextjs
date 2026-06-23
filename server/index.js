@@ -3,6 +3,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import path from "path";
+import http from "http";
+import { Server } from "socket.io";
 
 import authRoutes from "./routes/authRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
@@ -17,7 +19,8 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import chapterRoutes from "./routes/chapterRoutes.js";
 import progressRoutes from "./routes/progressRoutes.js";
 import examRoutes from "./routes/examRoutes.js";
-
+import { startExamPublishJob } from "./cron/examPublishJob.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
 
 dotenv.config();
 
@@ -46,30 +49,19 @@ app.use(cookieParser());
 /* Routes */
 
 app.use("/auth", authRoutes);
-
 app.use("/students", studentRoutes);
-
 app.use("/admins", adminRoutes);
-
 app.use("/courses", courseRoutes);
-
 app.use("/cart", cartRoutes);
-
 app.use("/library", libraryRoutes);
-
 app.use("/orders", orderRoutes);
-
 app.use("/coupons", couponRoutes);
-
 app.use("/payments", paymentRoutes);
-
 app.use("/dashboard", dashboardRoutes);
-
 app.use("/chapters", chapterRoutes);
-
 app.use("/progress", progressRoutes);
-
 app.use("/exams", examRoutes);
+app.use("/notifications", notificationRoutes);
 
 /* Static Uploads */
 
@@ -80,9 +72,41 @@ app.use(
   express.static(path.join(process.cwd(), "uploads"))
 );
 
+const server = http.createServer(app);
+
+export const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3000",
+    credentials: true,
+    methods: ["GET", "POST"],
+  },
+});
+
+app.set("io", io);
+
+io.on("connection", (socket) => {
+  console.log("User connected:", socket.id);
+
+  socket.on("joinUser", (userId) => {
+    socket.join(`user_${userId}`);
+    console.log(`User joined room: user_${userId}`);
+  });
+
+  socket.on("joinAdmin", () => {
+    socket.join("admins");
+    console.log("Admin joined admins room");
+  });
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+  });
+});
+
+startExamPublishJob(io);
+
 const PORT = process.env.PORT || 1912;
 
-const server = app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
 

@@ -51,7 +51,7 @@ function Login() {
         },
       );
 
-      const data = res.data;
+      const data = res.data.data;
 
       localStorage.setItem("role", data.role);
       localStorage.setItem("type", data.type);

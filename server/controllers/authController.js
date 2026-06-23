@@ -1,16 +1,26 @@
-import { connectToDatabase } from '../lib/db.js';
-import bcrypt from 'bcrypt';
-import { UAParser } from "ua-parser-js";
+import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { UAParser } from "ua-parser-js";
+import { asyncHandler } from "../helpers/asyncHandler.js";
+import { getDb } from "../helpers/dbHelper.js";
+import { sendSuccess, sendError } from "../helpers/responseHelper.js";
+import {
+    createLoginToken,
+    setAuthCookie,
+    clearAuthCookie,
+    deactivateOldSessions,
+    createUserSession,
+    endSessionByToken,
+} from "../helpers/sessionHelper.js";
 
-export const sessionToken = async (req, res) => {
+export const sessionToken = asyncHandler(async (req, res) => {
     const { publicToken } = req.body;
 
     if (publicToken !== process.env.PUBLIC_REGISTER_TOKEN) {
-        return res.status(401).json({ message: "Invalid public token" });
+        return sendError(res, "Invalid public token", 401);
     }
 
-    const sessionToken = jwt.sign(
+    const token = jwt.sign(
         {
             purpose: "guest_session",
             type: "guest",
@@ -19,61 +29,30 @@ export const sessionToken = async (req, res) => {
         { expiresIn: "1d" }
     );
 
-    res.cookie("auth_token", sessionToken, {
+    res.cookie("auth_token", token, {
         httpOnly: true,
-        secure: false,
+        secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         maxAge: 24 * 60 * 60 * 1000,
     });
 
-    return res.status(200).json({
-        message: "Session token created",
-    });
-};
+    return sendSuccess(res, {}, "Session token created");
+});
 
-export const register = async (req, res) => {
+export const register = asyncHandler(async (req, res) => {
     const token = req.cookies.auth_token;
 
     if (!token) {
-        return res.status(401).json({ message: "Session token missing" });
+        return sendError(res, "Session token missing", 401);
     }
 
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_KEY);
+    const decoded = jwt.verify(token, process.env.JWT_KEY);
 
-        if (decoded.purpose !== "guest_session") {
-            return res.status(403).json({ message: "Invalid session token" });
-        }
+    if (decoded.purpose !== "guest_session") {
+        return sendError(res, "Invalid session token", 403);
+    }
 
-        const {
-            firstName,
-            lastName,
-            email,
-            password,
-            phoneNo,
-            address,
-            city,
-            state,
-            dob,
-            deviceId,
-        } = req.body;
-
-        const db = await connectToDatabase();
-
-        const [rows] = await db.query(
-            "SELECT * FROM user_details WHERE email = ?",
-            [email]
-        );
-
-        if (rows.length > 0) {
-            return res.status(409).json({ message: "User Already Registered" });
-        }
-
-        const hashPassword = await bcrypt.hash(password, 10);
-
-        const [result] = await db.query(
-            `INSERT INTO user_details
-      (
+    const {
         firstName,
         lastName,
         email,
@@ -83,44 +62,71 @@ export const register = async (req, res) => {
         city,
         state,
         dob,
-        isActive
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                firstName,
-                lastName,
-                email,
-                hashPassword,
-                phoneNo,
-                address,
-                city,
-                state,
-                dob,
-                1,
-            ]
-        );
+    } = req.body;
 
-        const loginToken = jwt.sign(
-            {
-                id: result.insertId,
-                userId: result.insertId,
-                email,
-                role: "user",
-                type: "user",
-            },
-            process.env.JWT_KEY,
-            { expiresIn: "1d" }
-        );
+    if (!firstName || !email || !password) {
+        return sendError(res, "First name, email and password are required", 400);
+    }
 
-        res.cookie("auth_token", loginToken, {
-            httpOnly: true,
-            secure: false,
-            sameSite: "lax",
-            maxAge: 24 * 60 * 60 * 1000,
-        });
+    const db = await getDb();
 
-        return res.status(201).json({
-            message: "User Registered Successfully",
+    const [exists] = await db.query(
+        `SELECT userId FROM user_details WHERE email = ? LIMIT 1`,
+        [email]
+    );
+
+    if (exists.length > 0) {
+        return sendError(res, "User already registered", 409);
+    }
+
+    const hashPassword = await bcrypt.hash(password, 10);
+
+    const [result] = await db.query(
+        `
+    INSERT INTO user_details
+    (
+      firstName, lastName, email, password, phoneNo,
+      address, city, state, dob, isActive
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `,
+        [
+            firstName,
+            lastName || null,
+            email,
+            hashPassword,
+            phoneNo || null,
+            address || null,
+            city || null,
+            state || null,
+            dob || null,
+        ]
+    );
+
+    const loginToken = createLoginToken({
+        id: result.insertId,
+        userId: result.insertId,
+        email,
+        role: "user",
+        type: "user",
+    });
+
+    await deactivateOldSessions(db, {
+        userId: result.insertId,
+        userType: "user",
+    });
+
+    await createUserSession(db, {
+        userId: result.insertId,
+        userType: "user",
+        token: loginToken,
+    });
+
+    setAuthCookie(res, loginToken);
+
+    return sendSuccess(
+        res,
+        {
             role: "user",
             type: "user",
             user: {
@@ -131,58 +137,62 @@ export const register = async (req, res) => {
                 role: "user",
                 type: "user",
             },
-        });
-    } catch (err) {
-        console.log(err);
+        },
+        "User Registered Successfully",
+        201
+    );
+});
 
-        return res.status(401).json({
-            message: "Invalid or expired session token",
-            error: err.message,
-        });
+export const login = asyncHandler(async (req, res) => {
+    const { email, password, deviceId } = req.body;
+
+    if (!email || !password) {
+        return sendError(res, "Email and password are required", 400);
     }
-};
 
-export const login = async (req, res) => {
-    const { email, password } = req.body;
+    const db = await getDb();
 
-    try {
-        const db = await connectToDatabase();
+    const [adminRows] = await db.query(
+        `SELECT * FROM admins WHERE email = ? LIMIT 1`,
+        [email]
+    );
 
-        // Admin login
-        const [adminRows] = await db.query(
-            "SELECT * FROM admins WHERE email = ?",
-            [email]
-        );
+    if (adminRows.length > 0) {
+        const admin = adminRows[0];
 
-        if (adminRows.length > 0) {
-            const admin = adminRows[0];
+        if (Number(admin.isActive) === 0) {
+            return sendError(res, "Admin account is inactive", 403);
+        }
 
-            const isMatch = await bcrypt.compare(password, admin.password);
+        const isMatch = await bcrypt.compare(password, admin.password);
 
-            if (!isMatch) {
-                return res.status(401).json({ message: "Password not Matching" });
-            }
+        if (!isMatch) {
+            return sendError(res, "Password not matching", 401);
+        }
 
-            const token = jwt.sign(
-                {
-                    id: admin.adminId,
-                    email: admin.email,
-                    role: admin.role,
-                    type: "admin",
-                },
-                process.env.JWT_KEY,
-                { expiresIn: "1d" }
-            );
+        const token = createLoginToken({
+            id: admin.adminId,
+            email: admin.email,
+            role: admin.role,
+            type: "admin",
+        });
 
-            res.cookie("auth_token", token, {
-                httpOnly: true,
-                secure: false,
-                sameSite: "lax",
-                maxAge: 24 * 60 * 60 * 1000,
-            });
+        await deactivateOldSessions(db, {
+            adminId: admin.adminId,
+            userType: "admin",
+        });
 
-            return res.status(200).json({
-                message: "Admin Login Successful",
+        await createUserSession(db, {
+            adminId: admin.adminId,
+            userType: "admin",
+            token,
+        });
+
+        setAuthCookie(res, token);
+
+        return sendSuccess(
+            res,
+            {
                 role: admin.role,
                 type: "admin",
                 user: {
@@ -192,84 +202,77 @@ export const login = async (req, res) => {
                     role: admin.role,
                     type: "admin",
                 },
-            });
-        }
-
-        // User login from user_details
-        const [userRows] = await db.query(
-            "SELECT * FROM user_details WHERE email = ?",
-            [email]
-        );
-
-        if (userRows.length === 0) {
-            return res.status(404).json({
-                message: "User/Admin not Registered",
-            });
-        }
-
-        const user = userRows[0];
-
-        const isMatch = await bcrypt.compare(password, user.password);
-
-        if (!isMatch) {
-            return res.status(401).json({ message: "Password not Matching" });
-        }
-
-        const token = jwt.sign(
-            {
-                id: user.userId,
-                email: user.email,
-                role: "user",
-                type: "user",
             },
-            process.env.JWT_KEY,
-            { expiresIn: "1d" }
+            "Admin Login Successful"
         );
+    }
 
-        res.cookie("auth_token", token, {
-            httpOnly: true,
-            secure: false,
-            sameSite: "lax",
-            maxAge: 24 * 60 * 60 * 1000,
-        });
+    const [userRows] = await db.query(
+        `SELECT * FROM user_details WHERE email = ? LIMIT 1`,
+        [email]
+    );
 
-        const ipAddress =
-            req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-            req.headers["x-real-ip"] ||
-            req.socket.remoteAddress ||
-            req.ip ||
-            "Unknown";
+    if (userRows.length === 0) {
+        return sendError(res, "User/Admin not registered", 404);
+    }
 
-        const userAgent = req.headers["user-agent"] || "Unknown";
+    const user = userRows[0];
 
-        const parser = new UAParser(userAgent);
-        const deviceInfo = parser.getResult();
+    if (Number(user.isActive) === 0) {
+        return sendError(res, "User account is inactive", 403);
+    }
 
-        const deviceType = deviceInfo.device.type || "desktop";
+    const isMatch = await bcrypt.compare(password, user.password);
 
-        await db.query(
-            `
-            INSERT INTO users
-            (
-                userId,
-                ip_address,
-                device_type,
-                device_id,
-                user_agent
-            )
-            VALUES (?, ?, ?, ?, ?)
-            `,
-            [
-                user.userId,
-                ipAddress,
-                deviceType,
-                req.body.deviceId || null,
-                userAgent,
-            ]
-        );
+    if (!isMatch) {
+        return sendError(res, "Password not matching", 401);
+    }
 
-        return res.status(200).json({
-            message: "User Login Successful",
+    const token = createLoginToken({
+        id: user.userId,
+        userId: user.userId,
+        email: user.email,
+        role: "user",
+        type: "user",
+    });
+
+    await deactivateOldSessions(db, {
+        userId: user.userId,
+        userType: "user",
+    });
+
+    await createUserSession(db, {
+        userId: user.userId,
+        userType: "user",
+        token,
+    });
+
+    setAuthCookie(res, token);
+
+    const ipAddress =
+        req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+        req.headers["x-real-ip"] ||
+        req.socket.remoteAddress ||
+        req.ip ||
+        "Unknown";
+
+    const userAgent = req.headers["user-agent"] || "Unknown";
+    const parser = new UAParser(userAgent);
+    const deviceInfo = parser.getResult();
+    const deviceType = deviceInfo.device.type || "desktop";
+
+    await db.query(
+        `
+    INSERT INTO users
+    (userId, ip_address, device_type, device_id, user_agent)
+    VALUES (?, ?, ?, ?, ?)
+    `,
+        [user.userId, ipAddress, deviceType, deviceId || null, userAgent]
+    );
+
+    return sendSuccess(
+        res,
+        {
             role: "user",
             type: "user",
             user: {
@@ -281,77 +284,67 @@ export const login = async (req, res) => {
                 type: "user",
                 isActive: user.isActive,
             },
-        });
-    } catch (err) {
-        return res.status(500).json({
-            message: "Server Error",
-            error: err.message,
-        });
-    }
-};
+        },
+        "User Login Successful"
+    );
+});
 
-export const logout = async (req, res) => {
-    try {
-        res.clearCookie("auth_token", {
-            httpOnly: true,
-            secure: false,
-            sameSite: "lax",
-        });
+export const logout = asyncHandler(async (req, res) => {
+    const token = req.cookies?.auth_token;
+    const db = await getDb();
 
-        return res.status(200).json({
-            message: "Logout Successful",
-        });
-    } catch (err) {
-        return res.status(500).json({
-            message: "Server Error",
-            error: err.message,
-        });
-    }
-};
+    await endSessionByToken(db, token);
 
+    clearAuthCookie(res);
 
-export const home = async (req, res) => {
-    try {
-        const db = await connectToDatabase();
+    return sendSuccess(res, {}, "Logout Successful");
+});
 
-        let rows = [];
+export const home = asyncHandler(async (req, res) => {
+    const db = await getDb();
 
-        if (req.userType === "admin") {
-            const [adminRows] = await db.query(
-                "SELECT adminId, adminName, email, role, isActive FROM admins WHERE adminId = ?",
-                [req.userId]
-            );
-
-            rows = adminRows.map((admin) => ({
-                ...admin,
-                type: "admin",
-            }));
-        } else {
-            const [userRows] = await db.query(
-                `SELECT 
-          userId, firstName, lastName, email, phoneNo,
-          address, city, state, dob, isActive
-        FROM user_details 
-        WHERE userId = ?`,
-                [req.userId]
-            );
-
-            rows = userRows.map((user) => ({
-                ...user,
-                role: "user",
-                type: "user",
-            }));
-        }
+    if (req.userType === "admin") {
+        const [rows] = await db.query(
+            `
+      SELECT adminId, adminName, email, role, isActive
+      FROM admins
+      WHERE adminId = ?
+      `,
+            [req.userId]
+        );
 
         if (rows.length === 0) {
-            return res.status(404).json({ message: "User not registered" });
+            return sendError(res, "Admin not registered", 404);
         }
 
-        return res.status(200).json({ user: rows[0] });
-    } catch (err) {
-        return res.status(500).json({
-            message: "Server Error",
-            error: err.message,
+        return res.status(200).json({
+            user: {
+                ...rows[0],
+                type: "admin",
+            },
         });
     }
-};
+
+    const [rows] = await db.query(
+        `
+    SELECT 
+      userId, firstName, lastName, email, phoneNo,
+      address, city, state, dob, isActive
+    FROM user_details
+    WHERE userId = ?
+    `,
+        [req.userId]
+    );
+
+    if (rows.length === 0) {
+        return sendError(res, "User not registered", 404);
+    }
+
+    return res.status(200).json({
+        user: {
+            ...rows[0],
+            role: "user",
+            type: "user",
+        },
+    });
+});

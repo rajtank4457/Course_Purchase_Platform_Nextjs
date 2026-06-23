@@ -1,128 +1,248 @@
-import { connectToDatabase } from "../lib/db.js";
+import { asyncHandler } from "../helpers/asyncHandler.js";
+import { getDb } from "../helpers/dbHelper.js";
+import { sendSuccess, sendError } from "../helpers/responseHelper.js";
 
+const expireOldCoupons = async (db) => {
+    const today = new Date().toISOString().split("T")[0];
 
-export const validateCoupon = async (req, res) => {
-    try {
-        const { couponCode, subTotal } = req.body;
+    await db.query(
+        `
+    UPDATE coupon_details
+    SET isActive = 0
+    WHERE endDate IS NOT NULL
+    AND endDate < ?
+    AND isActive = 1
+    `,
+        [today]
+    );
+};
 
-        if (!couponCode) {
-            return res.status(400).json({
-                success: false,
-                message: "Coupon code is required",
-            });
-        }
+export const validateCoupon = asyncHandler(async (req, res) => {
+    const { couponCode, subTotal } = req.body;
 
-        const db = await connectToDatabase();
+    if (!couponCode) {
+        return sendError(res, "Coupon code is required", 400);
+    }
 
-        const [rows] = await db.query(
-            `
-      SELECT *
-      FROM coupon_details
-      WHERE couponCode = ?
-      AND isActive = 1
-      `,
-            [couponCode]
+    if (subTotal === undefined || subTotal === null) {
+        return sendError(res, "Subtotal is required", 400);
+    }
+
+    const db = await getDb();
+    await expireOldCoupons(db);
+
+    const code = couponCode.trim().toUpperCase();
+
+    const [rows] = await db.query(
+        `
+    SELECT *
+    FROM coupon_details
+    WHERE couponCode = ?
+    AND isActive = 1
+    LIMIT 1
+    `,
+        [code]
+    );
+
+    if (rows.length === 0) {
+        return sendError(res, "Invalid coupon code", 404);
+    }
+
+    const coupon = rows[0];
+    const today = new Date().toISOString().split("T")[0];
+
+    if (coupon.startDate && today < coupon.startDate) {
+        return sendError(res, "Coupon is not active yet", 400);
+    }
+
+    if (coupon.endDate && today > coupon.endDate) {
+        return sendError(res, "Coupon has expired", 400);
+    }
+
+    if (
+        coupon.usageLimit !== null &&
+        Number(coupon.usedCount) >= Number(coupon.usageLimit)
+    ) {
+        return sendError(res, "Coupon usage limit reached", 400);
+    }
+
+    if (Number(subTotal) < Number(coupon.minOrderAmount)) {
+        return sendError(
+            res,
+            `Minimum order amount should be ₹${coupon.minOrderAmount}`,
+            400
+        );
+    }
+
+    let discount = 0;
+
+    if (coupon.discountType === "percentage") {
+        discount = Math.round(
+            (Number(subTotal) * Number(coupon.discountValue)) / 100
         );
 
-        if (rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "Invalid coupon code",
-            });
+        if (coupon.maxDiscountAmount) {
+            discount = Math.min(discount, Number(coupon.maxDiscountAmount));
         }
+    } else {
+        discount = Number(coupon.discountValue);
+    }
 
-        const coupon = rows[0];
-        const today = new Date().toISOString().split("T")[0];
+    discount = Math.min(discount, Number(subTotal));
 
-        if (coupon.startDate && today < coupon.startDate) {
-            return res.status(400).json({
-                success: false,
-                message: "Coupon is not active yet",
-            });
-        }
-
-        if (coupon.endDate && today > coupon.endDate) {
-            return res.status(400).json({
-                success: false,
-                message: "Coupon has expired",
-            });
-        }
-
-        if (
-            coupon.usageLimit !== null &&
-            Number(coupon.usedCount) >= Number(coupon.usageLimit)
-        ) {
-            return res.status(400).json({
-                success: false,
-                message: "Coupon usage limit reached",
-            });
-        }
-
-        if (Number(subTotal) < Number(coupon.minOrderAmount)) {
-            return res.status(400).json({
-                success: false,
-                message: `Minimum order amount should be ₹${coupon.minOrderAmount}`,
-            });
-        }
-
-        let discount = 0;
-
-        if (coupon.discountType === "percentage") {
-            discount = Math.round((Number(subTotal) * Number(coupon.discountValue)) / 100);
-
-            if (coupon.maxDiscountAmount) {
-                discount = Math.min(discount, Number(coupon.maxDiscountAmount));
-            }
-        } else {
-            discount = Number(coupon.discountValue);
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: "Coupon applied successfully",
+    return sendSuccess(
+        res,
+        {
             discount,
             coupon,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Server Error",
-            error: err.message,
-        });
+        },
+        "Coupon applied successfully"
+    );
+});
+
+export const updateCouponUsage = asyncHandler(async (req, res) => {
+    const { couponCode } = req.body;
+
+    if (!couponCode) {
+        return sendError(res, "Coupon code is required", 400);
     }
-};
 
-export const updateCouponUsage = async (req, res) => {
-    try {
-        const { couponCode } = req.body;
+    const db = await getDb();
+    const code = couponCode.trim().toUpperCase();
 
-        if (!couponCode) {
-            return res.status(400).json({
-                success: false,
-                message: "Coupon code is required",
-            });
-        }
+    const [result] = await db.query(
+        `
+    UPDATE coupon_details
+    SET usedCount = usedCount + 1
+    WHERE couponCode = ?
+    `,
+        [code]
+    );
 
-        const db = await connectToDatabase();
+    if (result.affectedRows === 0) {
+        return sendError(res, "Coupon not found", 404);
+    }
 
-        await db.query(
-            `
-      UPDATE coupon_details
-      SET usedCount = usedCount + 1
-      WHERE couponCode = ?
-      `,
-            [couponCode]
+    return sendSuccess(res, {}, "Coupon usage updated");
+});
+
+export const getCoupons = asyncHandler(async (req, res) => {
+    const db = await getDb();
+
+    await expireOldCoupons(db);
+
+    const [coupons] = await db.query(`
+    SELECT
+      couponId,
+      couponCode,
+      discountType,
+      discountValue,
+      minOrderAmount,
+      maxDiscountAmount,
+      usageLimit,
+      usedCount,
+      isActive,
+      startDate,
+      endDate,
+      createdAt
+    FROM coupon_details
+    ORDER BY couponId DESC
+  `);
+
+    return sendSuccess(res, coupons, "Coupons fetched successfully");
+});
+
+export const addCoupon = asyncHandler(async (req, res) => {
+    const {
+        couponCode,
+        discountType,
+        discountValue,
+        minOrderAmount,
+        maxDiscountAmount,
+        usageLimit,
+        isActive,
+        startDate,
+        endDate,
+    } = req.body;
+
+    if (!couponCode || !discountType || !discountValue) {
+        return sendError(
+            res,
+            "Coupon code, discount type and discount value are required",
+            400
         );
-
-        return res.status(200).json({
-            success: true,
-            message: "Coupon usage updated",
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Server Error",
-            error: err.message,
-        });
     }
-};
+
+    if (!["percentage", "fixed"].includes(discountType)) {
+        return sendError(res, "Invalid discount type", 400);
+    }
+
+    if (Number(discountValue) <= 0) {
+        return sendError(res, "Discount value must be greater than 0", 400);
+    }
+
+    if (discountType === "percentage" && Number(discountValue) > 100) {
+        return sendError(res, "Percentage discount cannot be more than 100%", 400);
+    }
+
+    if (Number(minOrderAmount || 0) < 0) {
+        return sendError(res, "Minimum order amount cannot be negative", 400);
+    }
+
+    if (maxDiscountAmount && Number(maxDiscountAmount) < 0) {
+        return sendError(res, "Maximum discount amount cannot be negative", 400);
+    }
+
+    if (usageLimit && Number(usageLimit) <= 0) {
+        return sendError(res, "Usage limit must be greater than 0", 400);
+    }
+
+    if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
+        return sendError(res, "End date cannot be before start date", 400);
+    }
+
+    const db = await getDb();
+
+    const code = couponCode.trim().toUpperCase();
+
+    const [exists] = await db.query(
+        `SELECT couponId FROM coupon_details WHERE couponCode = ? LIMIT 1`,
+        [code]
+    );
+
+    if (exists.length > 0) {
+        return sendError(res, "Coupon code already exists", 409);
+    }
+
+    await db.query(
+        `
+    INSERT INTO coupon_details
+    (
+      couponCode,
+      discountType,
+      discountValue,
+      minOrderAmount,
+      maxDiscountAmount,
+      usageLimit,
+      usedCount,
+      isActive,
+      startDate,
+      endDate
+    )
+    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+    `,
+        [
+            code,
+            discountType,
+            Number(discountValue),
+            Number(minOrderAmount || 0),
+            maxDiscountAmount ? Number(maxDiscountAmount) : null,
+            usageLimit ? Number(usageLimit) : null,
+            Number(isActive ?? 1),
+            startDate || null,
+            endDate || null,
+        ]
+    );
+
+    return sendSuccess(res, {}, "Coupon added successfully", 201);
+});

@@ -1,158 +1,127 @@
-import { connectToDatabase } from "../lib/db.js";
 import bcrypt from "bcrypt";
+import { asyncHandler } from "../helpers/asyncHandler.js";
+import { getDb } from "../helpers/dbHelper.js";
+import { sendSuccess, sendError } from "../helpers/responseHelper.js";
+import { requireAdmin } from "../helpers/authHelper.js";
 
+export const getAdmins = asyncHandler(async (req, res) => {
+  if (!requireAdmin(req, res)) return;
 
-export const getAdmins = async (req, res) => {
-    try {
-        const db = await connectToDatabase();
+  const db = await getDb();
 
-        const [rows] = await db.query(`
-            SELECT 
-                adminId,
-                adminName,
-                password,
-                gender,
-                phNo,
-                email,
-                isActive,
-                role
-            FROM admins
-            ORDER BY adminId DESC
-        `);
+  const [rows] = await db.query(`
+    SELECT 
+      adminId,
+      adminName,
+      gender,
+      phNo,
+      email,
+      isActive,
+      role
+    FROM admins
+    ORDER BY adminId DESC
+  `);
 
-        return res.status(200).json(rows);
+  return sendSuccess(res, { data: rows }, "Admins fetched successfully");
+});
 
-    } catch (err) {
-        return res.status(500).json({
-            message: "Server Error",
-            error: err.message,
-        });
-    }
-};
+export const addAdmin = asyncHandler(async (req, res) => {
+  if (!requireAdmin(req, res)) return;
 
-export const addAdmin = async (req, res) => {
-    try {
-        const { password, adminName, gender, phNo, email, isActive, role } =
-            req.body;
+  const { password, adminName, gender, phNo, email, isActive, role } = req.body;
 
-        const db = await connectToDatabase();
+  if (!password || !adminName || !email) {
+    return sendError(res, "Name, email and password are required", 400);
+  }
 
-        const hashPassword = await bcrypt.hash(password, 10);
+  const db = await getDb();
 
-        await db.query(
-            `
-      INSERT INTO admins
-      (
-        password,
-        adminName,
-        gender,
-        phNo,
-        email,
-        isActive,
-        role
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      `,
-            [
-                hashPassword,
-                adminName,
-                gender,
-                phNo,
-                email,
-                isActive ?? 1,
-                role || "admin",
-            ]
-        );
+  const [exists] = await db.query(
+    `SELECT adminId FROM admins WHERE email = ? LIMIT 1`,
+    [email]
+  );
 
-        return res.status(201).json({
-            success: true,
-            message: "Admin added successfully",
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Server Error",
-            error: err.message,
-        });
-    }
-};
+  if (exists.length > 0) {
+    return sendError(res, "Admin email already exists", 409);
+  }
 
-export const updateAdmin = async (req, res) => {
-    try {
-        const { adminId, adminName, gender, phNo, email, isActive, role } =
-            req.body;
+  const hashPassword = await bcrypt.hash(password, 10);
 
-        const db = await connectToDatabase();
+  await db.query(
+    `
+    INSERT INTO admins
+    (password, adminName, gender, phNo, email, isActive, role)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      hashPassword,
+      adminName,
+      gender || null,
+      phNo || null,
+      email,
+      isActive ?? 1,
+      role || "admin",
+    ]
+  );
 
-        await db.query(
-            `
-      UPDATE admins SET
-        adminName = ?,
-        gender = ?,
-        phNo = ?,
-        email = ?,
-        isActive = ?,
-        role = ? 
-        WHERE adminId = ?;
-      `,
-            [
-                adminName,
-                gender,
-                phNo,
-                email,
-                isActive ?? 1,
-                role || "admin",
-                adminId,
-            ]
-        );
+  return sendSuccess(res, {}, "Admin added successfully", 201);
+});
 
-        return res.status(201).json({
-            success: true,
-            message: "Admin Updated successfully",
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Server Error",
-            error: err.message,
-        });
-    }
-};
+export const updateAdmin = asyncHandler(async (req, res) => {
+  if (!requireAdmin(req, res)) return;
 
-export const deleteAdmin = async (req, res) => {
-    try {
-        const { adminId } = req.body;
+  const { adminId, adminName, gender, phNo, email, isActive, role } = req.body;
 
-        if (!adminId) {
-            return res.status(400).json({
-                success: false,
-                message: "Admin ID is required",
-            });
-        }
+  if (!adminId) {
+    return sendError(res, "Admin ID is required", 400);
+  }
 
-        const db = await connectToDatabase();
+  const db = await getDb();
 
-        const [result] = await db.query(
-            "DELETE FROM admins WHERE adminId = ?",
-            [adminId]
-        );
+  await db.query(
+    `
+    UPDATE admins SET
+      adminName = ?,
+      gender = ?,
+      phNo = ?,
+      email = ?,
+      isActive = ?,
+      role = ?
+    WHERE adminId = ?
+    `,
+    [
+      adminName,
+      gender || null,
+      phNo || null,
+      email,
+      isActive ?? 1,
+      role || "admin",
+      adminId,
+    ]
+  );
 
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "Admin not found",
-            });
-        }
+  return sendSuccess(res, {}, "Admin updated successfully");
+});
 
-        return res.status(200).json({
-            success: true,
-            message: "Admin deleted successfully",
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Server Error",
-            error: err.message,
-        });
-    }
-};
+export const deleteAdmin = asyncHandler(async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const { adminId } = req.body;
+
+  if (!adminId) {
+    return sendError(res, "Admin ID is required", 400);
+  }
+
+  const db = await getDb();
+
+  const [result] = await db.query(
+    `DELETE FROM admins WHERE adminId = ?`,
+    [adminId]
+  );
+
+  if (result.affectedRows === 0) {
+    return sendError(res, "Admin not found", 404);
+  }
+
+  return sendSuccess(res, {}, "Admin deleted successfully");
+});

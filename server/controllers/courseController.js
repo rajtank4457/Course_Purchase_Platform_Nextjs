@@ -1,336 +1,291 @@
+import { asyncHandler } from "../helpers/asyncHandler.js";
+import { getDb } from "../helpers/dbHelper.js";
+import { sendSuccess, sendError } from "../helpers/responseHelper.js";
 
-import { connectToDatabase } from "../lib/db.js";
-
-
-export const getCourses = async (req, res) => {
-    try {
-        const db = await connectToDatabase();
-
-        const [rows] = await db.query(
-            `
-      SELECT 
-        cd.courseId,
-        cd.courseName,
-        cd.courseDesc,
-        cd.courseType,
-        cd.courseSlug,
-        cd.coursePrice,
-        cd.courseImg,
-        cd.createdAt,
-
-        CASE 
-          WHEN ul.libraryId IS NOT NULL THEN 1
-          ELSE 0
-        END AS hasCourse,
-
-        COUNT(ch.chId) AS chapterCount
-
-      FROM course_details cd
-
-      LEFT JOIN user_library ul
-        ON ul.courseId = cd.courseId
-        AND ul.userId = ?
-
-      LEFT JOIN chapter_details ch
-        ON ch.courseId = cd.courseId
-
-      GROUP BY
-        cd.courseId,
-        cd.courseName,
-        cd.courseDesc,
-        cd.courseType,
-        cd.courseSlug,
-        cd.coursePrice,
-        cd.courseImg,
-        cd.createdAt,
-        ul.libraryId
-
-      ORDER BY cd.createdAt DESC
-      `,
-            [req.userId]
-        );
-
-        return res.status(200).json({
-            success: true,
-            data: rows,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Server Error",
-            error: err.message,
-        });
-    }
+const isAdminUser = (req) => {
+    return (
+        req.userType === "admin" ||
+        req.userType === "super_admin" ||
+        req.userRole === "admin" ||
+        req.userRole === "super_admin"
+    );
 };
 
-export const getCoursesWithChapters = async (req, res) => {
-    try {
-        const db = await connectToDatabase();
+export const getCourses = asyncHandler(async (req, res) => {
+    const db = await getDb();
 
-        const [courses] = await db.query(`
-      SELECT
-        courseId,
-        courseName
-      FROM course_details
-      ORDER BY courseName ASC
-    `);
+    const [rows] = await db.query(
+        `
+    SELECT 
+      cd.courseId,
+      cd.courseName,
+      cd.courseDesc,
+      cd.courseType,
+      cd.courseSlug,
+      cd.coursePrice,
+      cd.courseImg,
+      cd.createdAt,
 
-        const [chapters] = await db.query(`
-      SELECT
-        chId,
-        courseId,
-        chapterName
-      FROM chapter_details
-      ORDER BY chId ASC
-    `);
+      CASE 
+        WHEN ul.libraryId IS NOT NULL THEN 1
+        ELSE 0
+      END AS hasCourse,
 
-        const result = courses.map((course) => ({
-            ...course,
-            chapters: chapters.filter(
-                (chapter) => chapter.courseId === course.courseId
-            ),
-        }));
+      COUNT(ch.chId) AS chapterCount
 
-        return res.json({
-            success: true,
-            data: result,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Server Error",
-            error: err.message,
-        });
+    FROM course_details cd
+
+    LEFT JOIN user_library ul
+      ON ul.courseId = cd.courseId
+      AND ul.userId = ?
+
+    LEFT JOIN chapter_details ch
+      ON ch.courseId = cd.courseId
+
+    GROUP BY
+      cd.courseId,
+      cd.courseName,
+      cd.courseDesc,
+      cd.courseType,
+      cd.courseSlug,
+      cd.coursePrice,
+      cd.courseImg,
+      cd.createdAt,
+      ul.libraryId
+
+    ORDER BY cd.createdAt DESC
+    `,
+        [req.userId || 0]
+    );
+
+    return sendSuccess(res, rows, "Courses fetched successfully");
+});
+
+export const getCoursesWithChapters = asyncHandler(async (req, res) => {
+    const db = await getDb();
+
+    const [courses] = await db.query(`
+    SELECT
+      courseId,
+      courseName
+    FROM course_details
+    ORDER BY courseName ASC
+  `);
+
+    const [chapters] = await db.query(`
+    SELECT
+      chId,
+      courseId,
+      chapterName
+    FROM chapter_details
+    ORDER BY chId ASC
+  `);
+
+    const result = courses.map((course) => ({
+        ...course,
+        chapters: chapters.filter((chapter) => chapter.courseId === course.courseId),
+    }));
+
+    return sendSuccess(res, result, "Courses with chapters fetched successfully");
+});
+
+export const getCourseById = asyncHandler(async (req, res) => {
+    const { courseId } = req.params;
+
+    if (!courseId) {
+        return sendError(res, "Course ID is required", 400);
     }
-};
 
-export const getCourseById = async (req, res) => {
-    try {
-        const { courseId } = req.params;
+    const db = await getDb();
 
-        const db = await connectToDatabase();
+    const [rows] = await db.query(
+        `
+    SELECT
+      courseId,
+      courseName,
+      courseDesc,
+      courseType,
+      courseSlug,
+      coursePrice,
+      courseImg,
+      createdAt
+    FROM course_details
+    WHERE courseId = ?
+    LIMIT 1
+    `,
+        [courseId]
+    );
 
-        const [rows] = await db.query(
-            `
-      SELECT
-        courseId,
-        courseName,
-        courseDesc,
-        courseType,
-        courseSlug,
-        coursePrice,
-        courseImg,
-        createdAt
-      FROM course_details
-      WHERE courseId = ?
-      `,
-            [courseId]
-        );
-
-        if (rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "Course not found",
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            data: rows[0],
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Server Error",
-            error: err.message,
-        });
+    if (rows.length === 0) {
+        return sendError(res, "Course not found", 404);
     }
-};
 
-export const addCourse = async (req, res) => {
-    try {
-        const {
+    return sendSuccess(res, rows[0], "Course fetched successfully");
+});
+
+export const addCourse = asyncHandler(async (req, res) => {
+    if (!isAdminUser(req)) {
+        return sendError(res, "Only admins can add courses", 403);
+    }
+
+    const { courseName, courseDesc, courseType, courseSlug, coursePrice } =
+        req.body;
+
+    if (!req.userId) {
+        return sendError(res, "Admin ID not found in token", 401);
+    }
+
+    if (!courseName || !courseDesc || !courseSlug) {
+        return sendError(res, "Course name, description and slug are required", 400);
+    }
+
+    const db = await getDb();
+
+    const [exists] = await db.query(
+        `SELECT courseId FROM course_details WHERE courseSlug = ? LIMIT 1`,
+        [courseSlug]
+    );
+
+    if (exists.length > 0) {
+        return sendError(res, "Course slug already exists", 409);
+    }
+
+    const courseImg = req.file ? req.file.filename : null;
+
+    const [result] = await db.query(
+        `
+    INSERT INTO course_details
+    (
+      adminId,
+      courseName,
+      courseDesc,
+      courseType,
+      courseSlug,
+      coursePrice,
+      courseImg
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    `,
+        [
+            req.userId,
             courseName,
             courseDesc,
-            courseType,
+            Number(courseType) || 0,
             courseSlug,
-            coursePrice,
-        } = req.body;
+            Number(courseType) === 1 ? Number(coursePrice || 0) : 0,
+            courseImg,
+        ]
+    );
 
-        if (req.userType !== "admin") {
-            return res.status(403).json({
-                success: false,
-                message: "Only admins can add courses",
-            });
-        }
-
-        const adminId = req.userId;
-
-        if (!adminId) {
-            return res.status(401).json({
-                success: false,
-                message: "Admin ID not found in token",
-            });
-        }
-
-        if (!courseName || !courseDesc || !courseSlug) {
-            return res.status(400).json({
-                success: false,
-                message: "Course name, description and slug are required",
-            });
-        }
-
-        const courseImg = req.file ? req.file.filename : null;
-
-        const db = await connectToDatabase();
-
-        const [exists] = await db.query(
-            `SELECT courseId FROM course_details WHERE courseSlug = ?`,
-            [courseSlug]
-        );
-
-        if (exists.length > 0) {
-            return res.status(409).json({
-                success: false,
-                message: "Course slug already exists",
-            });
-        }
-
-        const [result] = await db.query(
-            `
-      INSERT INTO course_details
-      (
-        adminId,
-        courseName,
-        courseDesc,
-        courseType,
-        courseSlug,
-        coursePrice,
-        courseImg
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      `,
-            [
-                adminId,
-                courseName,
-                courseDesc,
-                Number(courseType) || 0,
-                courseSlug,
-                Number(courseType) === 1 ? Number(coursePrice || 0) : 0,
-                courseImg,
-            ]
-        );
-
-        return res.status(201).json({
-            success: true,
-            message: "Course added successfully",
+    return sendSuccess(
+        res,
+        {
             courseId: result.insertId,
-            adminId,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Server Error",
-            error: err.message,
-        });
-    }
-};
+            adminId: req.userId,
+        },
+        "Course added successfully",
+        201
+    );
+});
 
-export const updateCourse = async (req, res) => {
-    try {
-        const {
-            courseId,
+export const updateCourse = asyncHandler(async (req, res) => {
+    if (!isAdminUser(req)) {
+        return sendError(res, "Only admins can update courses", 403);
+    }
+
+    const {
+        courseId,
+        courseName,
+        courseDesc,
+        courseType,
+        courseSlug,
+        coursePrice,
+        oldCourseImg,
+    } = req.body;
+
+    if (!courseId) {
+        return sendError(res, "Course ID is required", 400);
+    }
+
+    if (!courseName || !courseDesc || !courseSlug) {
+        return sendError(res, "Course name, description and slug are required", 400);
+    }
+
+    const db = await getDb();
+
+    const [slugExists] = await db.query(
+        `
+    SELECT courseId 
+    FROM course_details 
+    WHERE courseSlug = ? AND courseId != ?
+    LIMIT 1
+    `,
+        [courseSlug, courseId]
+    );
+
+    if (slugExists.length > 0) {
+        return sendError(res, "Course slug already exists", 409);
+    }
+
+    const newImage = req.file ? req.file.filename : oldCourseImg || null;
+
+    const [result] = await db.query(
+        `
+    UPDATE course_details
+    SET
+      courseName = ?,
+      courseDesc = ?,
+      courseType = ?,
+      courseSlug = ?,
+      coursePrice = ?,
+      courseImg = ?
+    WHERE courseId = ?
+    `,
+        [
             courseName,
             courseDesc,
-            courseType,
+            Number(courseType),
             courseSlug,
-            coursePrice,
-            oldCourseImg,
-        } = req.body;
+            Number(courseType) === 1 ? Number(coursePrice || 0) : 0,
+            newImage,
+            courseId,
+        ]
+    );
 
-        if (!courseId) {
-            return res.status(400).json({
-                success: false,
-                message: "Course ID is required",
-            });
-        }
+    if (result.affectedRows === 0) {
+        return sendError(res, "Course not found", 404);
+    }
 
-        const newImage = req.file ? req.file.filename : oldCourseImg || null;
-
-        const db = await connectToDatabase();
-
-        await db.query(
-            `
-      UPDATE course_details
-      SET
-        courseName = ?,
-        courseDesc = ?,
-        courseType = ?,
-        courseSlug = ?,
-        coursePrice = ?,
-        courseImg = ?
-      WHERE courseId = ?
-      `,
-            [
-                courseName,
-                courseDesc,
-                Number(courseType),
-                courseSlug,
-                Number(courseType) === 1 ? Number(coursePrice || 0) : 0,
-                newImage,
-                courseId,
-            ]
-        );
-
-        return res.status(200).json({
-            success: true,
-            message: "Course updated successfully",
+    return sendSuccess(
+        res,
+        {
             courseImg: newImage,
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Server Error",
-            error: err.message,
-        });
+        },
+        "Course updated successfully"
+    );
+});
+
+export const deleteCourse = asyncHandler(async (req, res) => {
+    if (!isAdminUser(req)) {
+        return sendError(res, "Only admins can delete courses", 403);
     }
-};
 
-export const deleteCourse = async (req, res) => {
-    try {
-        const { courseId } = req.body;
+    const { courseId } = req.body;
 
-        if (!courseId) {
-            return res.status(400).json({
-                success: false,
-                message: "Course ID is required",
-            });
-        }
-
-        const db = await connectToDatabase();
-
-        const [result] = await db.query(
-            `DELETE FROM course_details WHERE courseId = ?`,
-            [courseId]
-        );
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "Course not found",
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: "Course deleted successfully",
-        });
-    } catch (err) {
-        return res.status(500).json({
-            success: false,
-            message: "Server Error",
-            error: err.message,
-        });
+    if (!courseId) {
+        return sendError(res, "Course ID is required", 400);
     }
-};
 
+    const db = await getDb();
+
+    const [result] = await db.query(
+        `DELETE FROM course_details WHERE courseId = ?`,
+        [courseId]
+    );
+
+    if (result.affectedRows === 0) {
+        return sendError(res, "Course not found", 404);
+    }
+
+    return sendSuccess(res, {}, "Course deleted successfully");
+});

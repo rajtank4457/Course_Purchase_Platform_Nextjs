@@ -9,7 +9,9 @@ import {
   getStudentDetailsWithCourses,
   getStudentCourseProgress,
   resetStudentCourseProgress,
-  resetStudentAllProgress,  
+  resetStudentAllProgress,
+  resetChapterProgress,
+  removeStudentCourse,
 } from "../controllers/studentController.js";
 
 const router = express.Router();
@@ -39,6 +41,10 @@ router.get(
 
 router.post("/reset-course-progress", verifyToken, resetStudentCourseProgress);
 
+router.post("/reset-chapter-progress", verifyToken, resetChapterProgress);
+
 router.post("/reset-all-progress", verifyToken, resetStudentAllProgress);
+
+router.post("/remove-course", verifyToken, removeStudentCourse);
 
 export default router;
