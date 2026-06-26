@@ -1,8 +1,9 @@
 import bcrypt from "bcrypt";
 import { asyncHandler } from "../helpers/asyncHandler.js";
 import { getDb } from "../helpers/dbHelper.js";
-import { sendSuccess, sendError } from "../helpers/responseHelper.js";
+import { sendError } from "../helpers/responseHelper.js";
 import { requireAdmin } from "../helpers/authHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
 export const getAdmins = asyncHandler(async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -22,7 +23,11 @@ export const getAdmins = asyncHandler(async (req, res) => {
     ORDER BY adminId DESC
   `);
 
-  return sendSuccess(res, { data: rows }, "Admins fetched successfully");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Admins fetched successfully",
+    data: rows,
+  });
 });
 
 export const addAdmin = asyncHandler(async (req, res) => {
@@ -64,7 +69,11 @@ export const addAdmin = asyncHandler(async (req, res) => {
     ]
   );
 
-  return sendSuccess(res, {}, "Admin added successfully", 201);
+  return sendEncrypted(res, 201, {
+    success: true,
+    message: "Admin added successfully",
+    data: {},
+  });
 });
 
 export const updateAdmin = asyncHandler(async (req, res) => {
@@ -100,7 +109,11 @@ export const updateAdmin = asyncHandler(async (req, res) => {
     ]
   );
 
-  return sendSuccess(res, {}, "Admin updated successfully");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Admin updated successfully",
+    data: {},
+  });
 });
 
 export const deleteAdmin = asyncHandler(async (req, res) => {
@@ -123,5 +136,9 @@ export const deleteAdmin = asyncHandler(async (req, res) => {
     return sendError(res, "Admin not found", 404);
   }
 
-  return sendSuccess(res, {}, "Admin deleted successfully");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Admin deleted successfully",
+    data: {},
+  });
 });

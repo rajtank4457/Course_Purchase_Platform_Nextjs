@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import axios from "axios";
 import { useRouter } from "next/navigation";
-import API_URL from "@/config/api";
+import { apiRequest, authApi } from "@/lib/apiHelper";
 
 export default function ProtectedRoute({ children, allowedRoles = [] }) {
   const router = useRouter();
@@ -13,11 +12,16 @@ export default function ProtectedRoute({ children, allowedRoles = [] }) {
 
   const checkAuth = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_URL}/auth/home`, {
-        withCredentials: true,
+      const res = await apiRequest(authApi.getHomeUser, {
+        method: "GET",
       });
 
-      const user = res.data?.user;
+      if (!res.success) {
+        router.replace("/login");
+        return;
+      }
+
+      const user = res.user || res.data?.user || res.data?.data?.user;
 
       if (!user) {
         router.replace("/login");
@@ -38,6 +42,7 @@ export default function ProtectedRoute({ children, allowedRoles = [] }) {
 
       setLoading(false);
     } catch (error) {
+      console.log("ProtectedRoute error:", error);
       router.replace("/login");
     }
   }, [router, rolesKey]);

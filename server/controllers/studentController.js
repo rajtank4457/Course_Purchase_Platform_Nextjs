@@ -1,7 +1,8 @@
 import bcrypt from "bcrypt";
 import { asyncHandler } from "../helpers/asyncHandler.js";
 import { getDb } from "../helpers/dbHelper.js";
-import { sendSuccess, sendError } from "../helpers/responseHelper.js";
+import { sendError } from "../helpers/responseHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 import { requireAdmin } from "../helpers/authHelper.js";
 
 export const getStudents = asyncHandler(async (req, res) => {
@@ -17,7 +18,11 @@ export const getStudents = asyncHandler(async (req, res) => {
     ORDER BY userId DESC
   `);
 
-    return sendSuccess(res, rows, "Students fetched successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Students fetched successfully",
+        data: rows,
+    });
 });
 
 export const addStudent = asyncHandler(async (req, res) => {
@@ -76,7 +81,11 @@ export const addStudent = asyncHandler(async (req, res) => {
         ]
     );
 
-    return sendSuccess(res, {}, "Student added successfully", 201);
+    return sendEncrypted(res, 201, {
+        success: true,
+        message: "Student added successfully",
+        data: {},
+    });
 });
 
 export const getStudentDetailsWithCourses = asyncHandler(async (req, res) => {
@@ -142,14 +151,14 @@ export const getStudentDetailsWithCourses = asyncHandler(async (req, res) => {
         [userId]
     );
 
-    return sendSuccess(
-        res,
-        {
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Student details fetched successfully",
+        data: {
             student: studentRows[0],
             courses,
         },
-        "Student details fetched successfully"
-    );
+    });
 });
 
 export const getStudentCourseProgress = asyncHandler(async (req, res) => {
@@ -186,11 +195,11 @@ export const getStudentCourseProgress = asyncHandler(async (req, res) => {
         [userId, courseId]
     );
 
-    return sendSuccess(
-        res,
-        chapters,
-        "Student course progress fetched successfully"
-    );
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Student course progress fetched successfully",
+        data: chapters,
+    });
 });
 
 export const resetStudentCourseProgress = asyncHandler(async (req, res) => {
@@ -212,7 +221,11 @@ export const resetStudentCourseProgress = asyncHandler(async (req, res) => {
         [userId, courseId]
     );
 
-    return sendSuccess(res, {}, "Course progress reset successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Course progress reset successfully",
+        data: {},
+    });
 });
 
 export const resetStudentAllProgress = asyncHandler(async (req, res) => {
@@ -234,7 +247,11 @@ export const resetStudentAllProgress = asyncHandler(async (req, res) => {
         [userId]
     );
 
-    return sendSuccess(res, {}, "All progress reset successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "All progress reset successfully",
+        data: {},
+    });
 });
 
 export const resetChapterProgress = asyncHandler(async (req, res) => {
@@ -256,7 +273,11 @@ export const resetChapterProgress = asyncHandler(async (req, res) => {
         [userId, courseId, chId]
     );
 
-    return sendSuccess(res, {}, "Chapter progress reset successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Chapter progress reset successfully",
+        data: {},
+    });
 });
 
 export const removeStudentCourse = asyncHandler(async (req, res) => {
@@ -286,7 +307,11 @@ export const removeStudentCourse = asyncHandler(async (req, res) => {
         [userId, courseId]
     );
 
-    return sendSuccess(res, {}, "Course removed from student successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Course removed from student successfully",
+        data: {},
+    });
 });
 
 export const updateStudent = asyncHandler(async (req, res) => {
@@ -362,7 +387,11 @@ export const updateStudent = asyncHandler(async (req, res) => {
         return sendError(res, "Student not found", 404);
     }
 
-    return sendSuccess(res, {}, "Student updated successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Student updated successfully",
+        data: {},
+    });
 });
 
 export const deleteStudent = asyncHandler(async (req, res) => {
@@ -385,5 +414,9 @@ export const deleteStudent = asyncHandler(async (req, res) => {
         return sendError(res, "Student not found", 404);
     }
 
-    return sendSuccess(res, {}, "Student deleted successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Student deleted successfully",
+        data: {},
+    });
 });

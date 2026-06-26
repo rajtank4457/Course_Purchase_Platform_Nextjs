@@ -2,7 +2,8 @@ import razorpay from "../config/razorpay.js";
 import crypto from "crypto";
 import { asyncHandler } from "../helpers/asyncHandler.js";
 import { getDb } from "../helpers/dbHelper.js";
-import { sendSuccess, sendError } from "../helpers/responseHelper.js";
+import { sendError } from "../helpers/responseHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 import { requireUser } from "../helpers/authHelper.js";
 import {
     addOrderCoursesToLibrary,
@@ -90,13 +91,16 @@ export const createOrder = asyncHandler(async (req, res) => {
 
     await createOrderItems(db, orderId, cartItems);
 
-    return res.status(200).json({
+    return sendEncrypted(res, 200, {
         success: true,
-        orderId,
-        order_id: razorpayOrder.id,
-        amount: razorpayOrder.amount,
-        currency: razorpayOrder.currency,
-        key: process.env.RAZORPAY_KEY_ID,
+        message: "Razorpay order created successfully",
+        data: {
+            orderId,
+            order_id: razorpayOrder.id,
+            amount: razorpayOrder.amount,
+            currency: razorpayOrder.currency,
+            key: process.env.RAZORPAY_KEY_ID,
+        },
     });
 });
 
@@ -158,13 +162,13 @@ export const verifyCartPayment = asyncHandler(async (req, res) => {
     await addOrderCoursesToLibrary(db, req.userId, orderId);
     await clearUserCart(db, req.userId);
 
-    return sendSuccess(
-        res,
-        {
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Payment verified successfully",
+        data: {
             orderId,
         },
-        "Payment verified successfully"
-    );
+    });
 });
 
 export const paymentFailed = asyncHandler(async (req, res) => {
@@ -187,11 +191,11 @@ export const paymentFailed = asyncHandler(async (req, res) => {
         [razorpay_order_id, req.userId]
     );
 
-    return sendSuccess(
-        res,
-        {
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Payment failed status updated",
+        data: {
             error,
         },
-        "Payment failed status updated"
-    );
+    });
 });

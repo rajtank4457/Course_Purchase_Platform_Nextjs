@@ -1,8 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import axios from "axios";
-import API_URL from "@/config/api";
+import { apiRequest, courseApi } from "@/lib/apiHelper";
 import { Edit, Trash2 } from "lucide-react";
 
 export default function AdminCourseActionButton({ course }) {
@@ -14,26 +13,33 @@ export default function AdminCourseActionButton({ course }) {
 
   const handleDelete = async () => {
     const confirmDelete = window.confirm(
-      `Are you sure you want to delete "${course.courseName}"?`
+      `Are you sure you want to delete "${course.courseName}"?`,
     );
 
     if (!confirmDelete) return;
 
     try {
-      const res = await axios.post(
-        `${API_URL}/courses/delete`,
-        { courseId: course.courseId },
-        { withCredentials: true }
-      );
+      const service = courseApi.deleteCourse;
 
-      if (res.data.success) {
-        alert("Course deleted successfully");
-        router.refresh();
-      } else {
-        alert(res.data.message || "Failed to delete course");
+      const req = {
+        method: "POST",
+        data: {
+          courseId: course.courseId,
+        },
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to delete course");
+        return;
       }
+
+      alert(res.data?.message || "Course deleted successfully");
+
+      router.refresh();
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to delete course");
+      alert("Failed to delete course");
     }
   };
 

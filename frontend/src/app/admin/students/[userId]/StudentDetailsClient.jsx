@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import axios from "axios";
-import API_URL from "@/config/api";
+import { apiRequest, studentApi } from "@/lib/apiHelper";
 import {
   ArrowLeft,
   BookOpen,
@@ -31,14 +30,24 @@ export default function StudentDetailsPage() {
     try {
       setLoading(true);
 
-      const res = await axios.get(`${API_URL}/students/${userId}/details`, {
-        withCredentials: true,
-      });
+      const service = studentApi.getStudentDetails(userId);
 
-      setStudent(res.data.data.student);
-      setCourses(res.data.data.courses || []);
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to load student details");
+        router.push("/admin/students");
+        return;
+      }
+
+      setStudent(res.data?.data?.student || null);
+      setCourses(res.data?.data?.courses || []);
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to load student details");
+      alert("Failed to load student details");
       router.push("/admin/students");
     } finally {
       setLoading(false);
@@ -49,12 +58,23 @@ export default function StudentDetailsPage() {
     try {
       setSelectedCourse(course);
 
-      const res = await axios.get(
-        `${API_URL}/students/${userId}/course/${course.courseId}/progress`,
-        { withCredentials: true },
+      const service = studentApi.getStudentCourseProgress(
+        userId,
+        course.courseId,
       );
 
-      const data = res.data.data || [];
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to load course progress");
+        return;
+      }
+
+      const data = res.data?.data || [];
 
       const uniqueChapters = Array.from(
         new Map(
@@ -73,7 +93,7 @@ export default function StudentDetailsPage() {
 
       setChapters(uniqueChapters);
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to load course progress");
+      alert("Failed to load course progress");
     }
   };
 
@@ -83,19 +103,30 @@ export default function StudentDetailsPage() {
     try {
       setActionLoading(true);
 
-      const res = await axios.post(
-        `${API_URL}/students/reset-course-progress`,
-        { userId, courseId },
-        { withCredentials: true },
-      );
+      const service = studentApi.resetStudentCourseProgress;
 
-      alert(res.data.message || "Course progress reset successfully");
+      const req = {
+        method: "POST",
+        data: {
+          userId,
+          courseId,
+        },
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to reset progress");
+        return;
+      }
+
+      alert(res.data?.message || "Course progress reset successfully");
 
       setSelectedCourse(null);
       setChapters([]);
       await fetchStudentDetails();
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to reset progress");
+      alert("Failed to reset progress");
     } finally {
       setActionLoading(false);
     }
@@ -107,19 +138,29 @@ export default function StudentDetailsPage() {
     try {
       setActionLoading(true);
 
-      const res = await axios.post(
-        `${API_URL}/students/reset-all-progress`,
-        { userId },
-        { withCredentials: true },
-      );
+      const service = studentApi.resetStudentAllProgress;
 
-      alert(res.data.message || "All progress reset successfully");
+      const req = {
+        method: "POST",
+        data: {
+          userId,
+        },
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to reset all progress");
+        return;
+      }
+
+      alert(res.data?.message || "All progress reset successfully");
 
       setSelectedCourse(null);
       setChapters([]);
       await fetchStudentDetails();
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to reset all progress");
+      alert("Failed to reset all progress");
     } finally {
       setActionLoading(false);
     }
@@ -131,19 +172,30 @@ export default function StudentDetailsPage() {
     try {
       setActionLoading(true);
 
-      const res = await axios.post(
-        `${API_URL}/students/remove-course`,
-        { userId, courseId },
-        { withCredentials: true },
-      );
+      const service = studentApi.removeStudentCourse;
 
-      alert(res.data.message || "Course removed successfully");
+      const req = {
+        method: "POST",
+        data: {
+          userId,
+          courseId,
+        },
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to remove course");
+        return;
+      }
+
+      alert(res.data?.message || "Course removed successfully");
 
       setSelectedCourse(null);
       setChapters([]);
       await fetchStudentDetails();
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to remove course");
+      alert("Failed to remove course");
     } finally {
       setActionLoading(false);
     }
@@ -155,22 +207,30 @@ export default function StudentDetailsPage() {
     try {
       setActionLoading(true);
 
-      const res = await axios.post(
-        `${API_URL}/students/reset-chapter-progress`,
-        {
+      const service = studentApi.resetChapterProgress;
+
+      const req = {
+        method: "POST",
+        data: {
           userId,
           courseId: selectedCourse.courseId,
           chId: chapter.chId,
         },
-        { withCredentials: true },
-      );
+      };
 
-      alert(res.data.message || "Chapter progress reset successfully");
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to reset chapter progress");
+        return;
+      }
+
+      alert(res.data?.message || "Chapter progress reset successfully");
 
       await fetchCourseProgress(selectedCourse);
       await fetchStudentDetails();
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to reset chapter progress");
+      alert("Failed to reset chapter progress");
     } finally {
       setActionLoading(false);
     }

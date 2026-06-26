@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import axios from "axios";
-import API_URL from "@/config/api";
+import { apiRequest, couponApi } from "@/lib/apiHelper";
 import { useRouter } from "next/navigation";
 import {
   Box,
@@ -95,14 +94,24 @@ export default function AddCouponClient() {
         endDate: coupon.endDate || null,
       };
 
-      const res = await axios.post(`${API_URL}/coupons/add`, payload, {
-        withCredentials: true,
-      });
+      const service = couponApi.addCoupon;
 
-      alert(res.data.message || "Coupon added successfully");
+      const req = {
+        method: "POST",
+        data: payload,
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to add coupon");
+        return;
+      }
+
+      alert(res.data?.message || "Coupon added successfully");
       router.push("/admin/coupons");
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to add coupon");
+      alert("Failed to add coupon");
     } finally {
       setLoading(false);
     }

@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { useRouter } from "next/navigation";
-
+import { apiRequest, authApi, cartApi, notificationApi } from "@/lib/apiHelper";
 import {
   Avatar,
   Badge,
@@ -30,7 +29,6 @@ import { socket } from "@/lib/socket";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 
 import MenuIcon from "@mui/icons-material/Menu";
-import API_URL from "@/config/api.js";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 import SpaceDashboardIcon from "@mui/icons-material/SpaceDashboard";
@@ -88,9 +86,12 @@ export default function Header() {
       try {
         if (showLoading) setUserLoading(true);
 
-        const res = await axios.get(`${API_URL}/auth/home`, {
-          withCredentials: true,
-        });
+        const service = authApi.getHomeUser;
+        const req = {
+          method: "GET",
+        };
+
+        const res = await apiRequest(service, req);
 
         const user = res.data.user;
 
@@ -130,9 +131,17 @@ export default function Header() {
 
   const fetchNotifications = async () => {
     try {
-      const res = await axios.get(`${API_URL}/notifications`, {
-        withCredentials: true,
-      });
+      const service = notificationApi.getMyNotifications;
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        setNotifications([]);
+        return;
+      }
 
       const list = Array.isArray(res.data)
         ? res.data
@@ -214,13 +223,12 @@ export default function Header() {
 
   const handleLogout = async () => {
     try {
-      await axios.post(
-        `${API_URL}/auth/logout`,
-        {},
-        {
-          withCredentials: true,
-        },
-      );
+      const service = authApi.logoutUser;
+      const req = {
+        method: "POST",
+      };
+
+      await apiRequest(service, req);
     } catch (err) {
       console.log("Logout API failed:", err.message);
     } finally {
@@ -333,11 +341,16 @@ export default function Header() {
         return;
       }
 
-      const res = await axios.get(`${API_URL}/cart/count`, {
-        withCredentials: true,
-      });
+      const service = cartApi.getCartCount;
+      const req = {
+        method: "GET",
+      };
 
-      setCartCount(res.data?.data?.count || res.data?.count || 0);
+      const res = await apiRequest(service, req);
+
+      if (res.success) {
+        setCartCount(res.data?.data?.count || res.data?.count || 0);
+      }
     } catch (err) {
       console.error("Cart count fetch failed:", err);
       setCartCount(0);
@@ -530,11 +543,16 @@ export default function Header() {
                     e.stopPropagation();
 
                     try {
-                      await axios.delete(`${API_URL}/notifications/clear-all`, {
-                        withCredentials: true,
-                      });
+                      const service = notificationApi.clearAllNotifications;
+                      const req = {
+                        method: "DELETE",
+                      };
 
-                      setNotifications([]);
+                      const res = await apiRequest(service, req);
+
+                      if (res.success) {
+                        setNotifications([]);
+                      }
                     } catch (err) {
                       console.log(
                         "CLEAR NOTIFICATIONS ERROR:",
@@ -592,11 +610,15 @@ export default function Header() {
                     // Mark read safely
                     if (item.notificationId && !isAdmin) {
                       try {
-                        await axios.post(
-                          `${API_URL}/notifications/mark-read`,
-                          { notificationId: item.notificationId },
-                          { withCredentials: true },
-                        );
+                        const service = notificationApi.markNotificationRead;
+                        const req = {
+                          method: "POST",
+                          data: {
+                            notificationId: item.notificationId,
+                          },
+                        };
+
+                        await apiRequest(service, req);
                       } catch (err) {
                         console.log(
                           "MARK READ ERROR:",
@@ -666,7 +688,7 @@ export default function Header() {
           Profile
         </MenuItem>
 
-        <MenuItem
+       { role !== "user" && <MenuItem
           onClick={() => {
             setAnchorEl(null);
             router.push("/admin/coupons");
@@ -689,7 +711,7 @@ export default function Header() {
             <CardGiftcardIcon />
           </Box>
           Coupon
-        </MenuItem>
+        </MenuItem>}
 
         <Divider />
 

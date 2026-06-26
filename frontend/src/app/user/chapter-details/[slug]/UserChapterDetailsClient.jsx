@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import axios from "axios";
+import { apiRequest, progressApi, examApi, chapterApi } from "@/lib/apiHelper";
 import * as XLSX from "xlsx";
 import YouTube from "react-youtube";
 import API_URL from "@/config/api";
@@ -52,11 +52,14 @@ export default function UserChapterDetailsClient() {
 
   const fetchSavedProgress = async (chId) => {
     try {
-      const res = await axios.get(`${API_URL}/progress/chapter/${chId}`, {
-        withCredentials: true,
-      });
+      const service = progressApi.getChapterProgress(chId);
 
-      const saved = res.data.data || {};
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+      const saved = res.data?.data || {};
 
       const dbProgress = Number(saved.progress || 0);
 
@@ -106,11 +109,14 @@ export default function UserChapterDetailsClient() {
 
   const fetchChapterExams = async (courseId, chId) => {
     try {
-      const res = await axios.get(`${API_URL}/exams/available`, {
-        withCredentials: true,
-      });
+      const service = examApi.getAvailableExams;
 
-      const filtered = (res.data.data || []).filter(
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+      const filtered = (res.data?.data || []).filter(
         (exam) =>
           Number(exam.courseId) === Number(courseId) &&
           Number(exam.chId) === Number(chId) &&
@@ -125,26 +131,37 @@ export default function UserChapterDetailsClient() {
 
   const fetchChapter = async () => {
     try {
-      const res = await axios.get(`${API_URL}/chapters/${slug}`, {
-        withCredentials: true,
+      const service = chapterApi.getChapterBySlug(slug);
+
+      const res = await apiRequest(service, {
+        method: "GET",
       });
 
-      setChapter({
-        ...res.data.data,
-        sources: res.data.data.sources || [],
-      });
+      if (!res.success) {
+        alert(res.message || "Failed to load chapter");
+        router.push("/user/courses");
+        return;
+      }
 
-      const data = res.data.data;
+      const data = res.data?.data;
 
-      setChapter({
+      if (!data) {
+        alert("Chapter data not found");
+        router.push("/user/courses");
+        return;
+      }
+
+      const chapterData = {
         ...data,
         sources: data.sources || [],
-      });
+      };
 
-      await fetchSavedProgress(data.chId);
-      await fetchChapterExams(data.courseId, data.chId);
+      setChapter(chapterData);
+
+      await fetchSavedProgress(chapterData.chId);
+      await fetchChapterExams(chapterData.courseId, chapterData.chId);
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to load chapter");
+      alert("Failed to load chapter");
       router.push("/user/courses");
     } finally {
       setLoading(false);
@@ -193,9 +210,11 @@ export default function UserChapterDetailsClient() {
 
     const timer = setTimeout(async () => {
       try {
-        await axios.post(
-          `${API_URL}/progress/chapter/save`,
-          {
+        const service = progressApi.saveChapterProgress;
+
+        const req = {
+          method: "POST",
+          data: {
             courseId: chapter.courseId,
             chId: chapter.chId,
             progress: currentProgress,
@@ -204,8 +223,9 @@ export default function UserChapterDetailsClient() {
             videoProgress: Math.round(videoProgress),
             sourceProgress: Math.round(sourceProgress),
           },
-          { withCredentials: true },
-        );
+        };
+
+        await apiRequest(service, req);
 
         lastSavedRef.current = currentProgress;
       } catch (err) {
@@ -342,11 +362,16 @@ export default function UserChapterDetailsClient() {
     });
 
     if (["xlsx", "xls"].includes(ext)) {
-      const res = await axios.get(fileUrl, {
-        responseType: "arraybuffer",
-      });
+      const res = await fetch(fileUrl);
 
-      const workbook = XLSX.read(res.data, { type: "array" });
+      if (!res.ok) {
+        alert("Failed to open Excel file");
+        return;
+      }
+
+      const arrayBuffer = await res.arrayBuffer();
+
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
       let data = XLSX.utils.sheet_to_json(sheet, { header: 1 });

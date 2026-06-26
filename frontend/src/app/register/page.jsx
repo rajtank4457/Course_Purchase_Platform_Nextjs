@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import axios from "axios";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import API_URL from "@/config/api";
+import { apiRequest, authApi } from "@/lib/apiHelper";
 import {
   FiUser,
   FiMail,
@@ -16,7 +15,6 @@ import {
 
 function Register() {
   const router = useRouter();
-  const [tempToken, setTempToken] = useState("");
   const [step, setStep] = useState(1);
   const [isSessionReady, setIsSessionReady] = useState(false);
 
@@ -35,19 +33,25 @@ function Register() {
   useEffect(() => {
     const getRegisterToken = async () => {
       try {
-        await axios.post(
-          `${API_URL}/auth/session-token`,
-          {
+        const service = authApi.createSessionToken;
+
+        const req = {
+          method: "POST",
+          data: {
             publicToken: "PUBLIC_REGISTER_TOKEN_123",
           },
-          {
-            withCredentials: true,
-          },
-        );
+        };
+
+        const res = await apiRequest(service, req);
+
+        if (!res.success) {
+          setIsSessionReady(false);
+          return;
+        }
 
         setIsSessionReady(true);
       } catch (err) {
-        console.log(err.response?.data || err.message);
+        console.log(err);
         setIsSessionReady(false);
       }
     };
@@ -98,22 +102,29 @@ function Register() {
         localStorage.setItem("device_id", deviceId);
       }
 
-      const res = await axios.post(
-        `${API_URL}/auth/register`,
-        {
+      const service = authApi.registerUser;
+
+      const req = {
+        method: "POST",
+        data: {
           ...values,
           deviceId,
         },
-        {
-          withCredentials: true,
-        },
-      );
+      };
 
-      alert(res.data.message);
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Registration failed");
+        return;
+      }
+
+      alert(res.message || "Registration successful");
+
       router.push("/login");
     } catch (err) {
-      console.log(err.response?.data || err.message);
-      alert(err.response?.data?.message || "Registration failed");
+      console.log(err);
+      alert("Registration failed");
     }
   };
 

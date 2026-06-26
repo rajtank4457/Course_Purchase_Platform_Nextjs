@@ -1,6 +1,6 @@
 import { asyncHandler } from "../helpers/asyncHandler.js";
 import { getDb } from "../helpers/dbHelper.js";
-import { sendSuccess } from "../helpers/responseHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
 export const getMyNotifications = asyncHandler(async (req, res) => {
   const db = await getDb();
@@ -18,7 +18,13 @@ export const getMyNotifications = asyncHandler(async (req, res) => {
     [req.userId]
   );
 
-  return sendSuccess(res, { data: rows }, "Notifications fetched");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Notifications fetched",
+    data: {
+      data: rows,
+    },
+  });
 });
 
 export const markNotificationRead = asyncHandler(async (req, res) => {
@@ -35,7 +41,11 @@ export const markNotificationRead = asyncHandler(async (req, res) => {
     [notificationId, req.userId]
   );
 
-  return sendSuccess(res, {}, "Notification marked as read");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Notification marked as read",
+    data: {},
+  });
 });
 
 export const clearAllNotifications = asyncHandler(async (req, res) => {
@@ -46,5 +56,9 @@ export const clearAllNotifications = asyncHandler(async (req, res) => {
     [req.userId]
   );
 
-  return sendSuccess(res, {}, "Notifications cleared successfully");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Notifications cleared successfully",
+    data: {},
+  });
 });

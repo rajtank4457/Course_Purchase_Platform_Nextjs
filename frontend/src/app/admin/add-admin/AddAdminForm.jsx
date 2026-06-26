@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import axios from "axios";
-import API_URL from "@/config/api";
+import { apiRequest, adminApi } from "@/lib/apiHelper";
 import { useRouter } from "next/navigation";
 import {
   Box,
@@ -47,14 +46,24 @@ export default function AddAdminForm() {
     try {
       setLoading(true);
 
-      const res = await axios.post(`${API_URL}/auth/add-admin`, admin, {
-        withCredentials: true,
-      });
+      const service = adminApi.addAdmin;
 
-      alert(res.data.message || "Admin added successfully");
-      router.push("/admin/dashboard");
+      const req = {
+        method: "POST",
+        data: admin,
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to add admin");
+        return;
+      }
+
+      alert(res.data?.message || "Admin added successfully");
+      router.push("/admin/admins");
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to add admin");
+      alert("Failed to add admin");
     } finally {
       setLoading(false);
     }

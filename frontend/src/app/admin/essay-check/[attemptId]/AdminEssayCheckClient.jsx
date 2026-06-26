@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import axios from "axios";
-import API_URL from "@/config/api";
+import { apiRequest, examApi } from "@/lib/apiHelper";
 import {
   CheckCircle,
   Clock,
@@ -50,14 +49,23 @@ export default function AdminEssayCheckClient() {
     try {
       setLoading(true);
 
-      const res = await axios.get(
-        `${API_URL}/exams/admin/essay-check/${attemptId}`,
-        { withCredentials: true },
-      );
+      const service = examApi.getEssayCheckDetails(attemptId);
 
-      setAttempt(res.data.data);
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to load essay");
+        router.push("/admin/exams/pending-check");
+        return;
+      }
+
+      setAttempt(res.data?.data || null);
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to load essay");
+      alert("Failed to load essay");
       router.push("/admin/exams/pending-check");
     } finally {
       setLoading(false);
@@ -101,20 +109,28 @@ export default function AdminEssayCheckClient() {
     try {
       setSaving(true);
 
-      const res = await axios.post(
-        `${API_URL}/exams/admin/check-essay`,
-        {
+      const service = examApi.checkEssayManually;
+
+      const req = {
+        method: "POST",
+        data: {
           attemptId: attempt.attemptId,
           answerId: currentQuestion.answerId,
           obtainedMarks: Number(marks),
           adminRemark: remark,
         },
-        { withCredentials: true },
-      );
+      };
 
-      alert(res.data.message || "Essay checked successfully");
+      const res = await apiRequest(service, req);
 
-      if (res.data.completed) {
+      if (!res.success) {
+        alert(res.message || "Failed to save evaluation");
+        return;
+      }
+
+      alert(res.data?.message || "Essay checked successfully");
+
+      if (res.data?.completed) {
         router.push("/admin/exams/pending-check");
         return;
       }

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import API_URL from "@/config/api";
+import { decryptData } from "@/lib/cryptoHelper";
 import AdminCourseActionButton from "./AdminCourseActionButton";
 import AddButtonModal from "./AddButtonModal";
 import { Crown, BadgeCheck, Users, PlayCircle } from "lucide-react";
@@ -16,8 +17,14 @@ async function getCourses() {
 
   if (!res.ok) return [];
 
-  const data = await res.json();
-  return data.data || [];
+  const response = await res.json();
+
+  const data =
+    response.encrypted && response.payload
+      ? decryptData(response.payload)
+      : response;
+
+  return Array.isArray(data.data) ? data.data : [];
 }
 
 const isNewCourse = (createdAt) => {
@@ -32,6 +39,7 @@ const isNewCourse = (createdAt) => {
 
 export default async function AdminCoursesPage() {
   const courses = await getCourses();
+  const safeCourses = Array.isArray(courses) ? courses : [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-purple-50">
@@ -43,9 +51,7 @@ export default async function AdminCoursesPage() {
                 Admin Course Management
               </span>
 
-              <h2 className="text-4xl font-black text-gray-900">
-                All Courses
-              </h2>
+              <h2 className="text-4xl font-black text-gray-900">All Courses</h2>
 
               <p className="mt-2 max-w-2xl text-gray-600">
                 Edit, delete and manage all courses from here.
@@ -58,7 +64,7 @@ export default async function AdminCoursesPage() {
             </div>
           </div>
 
-          {courses.length === 0 ? (
+          {safeCourses.length === 0 ? (
             <div className="rounded-3xl border border-gray-200 bg-white p-10 text-center shadow-xl">
               <h3 className="text-2xl font-black text-gray-900">
                 No Courses Found
@@ -70,7 +76,7 @@ export default async function AdminCoursesPage() {
             </div>
           ) : (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {courses.map((course) => (
+              {safeCourses.map((course) => (
                 <div
                   key={course.courseId}
                   className="group overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"

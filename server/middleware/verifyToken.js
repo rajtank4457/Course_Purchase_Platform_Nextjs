@@ -31,7 +31,7 @@
 import jwt from "jsonwebtoken";
 import { connectToDatabase } from "../lib/db.js";
 
-const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutes
+const INACTIVITY_LIMIT = 30 * 60 * 1000;
 
 const clearAuthCookie = (res) => {
     res.clearCookie("auth_token", {
@@ -108,10 +108,10 @@ const verifyToken = async (req, res, next) => {
 
         await db.query(
             `
-      UPDATE user_sessions
-      SET lastActivity = NOW()
-      WHERE sessionId = ?
-      `,
+            UPDATE user_sessions
+            SET lastActivity = NOW()
+            WHERE sessionId = ?
+            `,
             [session.sessionId]
         );
 

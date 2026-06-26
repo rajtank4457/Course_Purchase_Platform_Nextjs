@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import axios from "axios";
-import API_URL from "@/config/api";
+import { apiRequest, orderApi } from "@/lib/apiHelper";
 import { ArrowLeft } from "lucide-react";
 
 export default function AdminOrderDetailsClient() {
@@ -16,9 +15,17 @@ export default function AdminOrderDetailsClient() {
 
   const fetchOrderDetails = async () => {
     try {
-      const res = await axios.get(`${API_URL}/orders/admin/${orderId}`, {
-        withCredentials: true,
-      });
+      const service = orderApi.getAdminOrderDetails(orderId);
+
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+      if (!res.success) {
+        console.log(res.message || "Failed to fetch order details");
+        return;
+      }
 
       setOrder(res.data.order || null);
       setItems(res.data.items || []);
@@ -34,14 +41,17 @@ export default function AdminOrderDetailsClient() {
   }, [orderId]);
 
   const getStatusText = (status) => {
-    if (status === "paid") return "Payment Successful";
+    if (status === "paid" || status === "success") return "Payment Successful";
     if (status === "failed") return "Payment Failed";
     return "Payment Pending";
   };
 
   const getStatusClass = (status) => {
-    if (status === "paid") return "text-green-700 bg-green-100";
+    if (status === "paid" || status === "success")
+      return "text-green-700 bg-green-100";
+
     if (status === "failed") return "text-red-700 bg-red-100";
+
     return "text-orange-700 bg-orange-100";
   };
 

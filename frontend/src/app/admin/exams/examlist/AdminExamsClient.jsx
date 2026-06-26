@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { useRouter, useSearchParams } from "next/navigation";
+import { apiRequest, examApi } from "@/lib/apiHelper";
 import {
   Box,
   Button,
@@ -36,8 +36,6 @@ import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import SchoolIcon from "@mui/icons-material/School";
 import SwapVertIcon from "@mui/icons-material/SwapVert";
-
-import API_URL from "@/config/api";
 
 const StyledTableCell = styled(TableCell)(({ theme }) => ({
   [`&.${tableCellClasses.head}`]: {
@@ -119,11 +117,20 @@ export default function AdminExamsClient() {
 
   const fetchExams = async () => {
     try {
-      const res = await axios.get(`${API_URL}/exams/all`, {
-        withCredentials: true,
-      });
+      const service = examApi.getAllExams;
 
-      const list = res.data.data || res.data || [];
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        console.log("FETCH EXAMS ERROR:", res.message);
+        return;
+      }
+
+      const list = res.data?.data || res.data || [];
 
       setRows(
         list.map((exam) => ({
@@ -149,7 +156,7 @@ export default function AdminExamsClient() {
 
       setPage(0);
     } catch (err) {
-      console.log("FETCH EXAMS ERROR:", err.response?.data || err);
+      console.log("FETCH EXAMS ERROR:", err);
     }
   };
 
@@ -161,20 +168,27 @@ export default function AdminExamsClient() {
     if (!window.confirm(`Delete exam "${row.examTitle}"?`)) return;
 
     try {
-      const res = await axios.post(
-        `${API_URL}/exams/delete`,
-        { examId: row.examId },
-        { withCredentials: true },
-      );
+      const service = examApi.deleteExam;
 
-      if (res.data.success) {
-        alert("Exam deleted successfully");
-        setRows((prev) => prev.filter((item) => item.examId !== row.examId));
-      } else {
-        alert(res.data.message || "Delete failed");
+      const req = {
+        method: "POST",
+        data: {
+          examId: row.examId,
+        },
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Delete failed");
+        return;
       }
+
+      alert(res.data?.message || "Exam deleted successfully");
+
+      setRows((prev) => prev.filter((item) => item.examId !== row.examId));
     } catch (err) {
-      alert(err.response?.data?.message || "Delete request failed");
+      alert("Delete request failed");
     }
   };
 

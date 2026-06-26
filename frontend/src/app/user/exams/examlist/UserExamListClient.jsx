@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { useRouter } from "next/navigation";
+import { apiRequest, examApi } from "@/lib/apiHelper";
 import {
   Box,
   Button,
@@ -19,7 +19,6 @@ import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import SchoolIcon from "@mui/icons-material/School";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import LockIcon from "@mui/icons-material/Lock";
-import API_URL from "@/config/api";
 
 export default function UserExamListClient() {
   const router = useRouter();
@@ -31,13 +30,21 @@ export default function UserExamListClient() {
     try {
       setLoading(true);
 
-      const res = await axios.get(`${API_URL}/exams/available`, {
-        withCredentials: true,
-      });
+      const service = examApi.getAvailableExams;
+      const req = {
+        method: "GET"
+      };
 
-      setExams(res.data.data || []);
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        console.log("FETCH USER EXAMS ERROR:", res.message);
+        return;
+      }
+
+      setExams(res.data?.data || []);
     } catch (err) {
-      console.log("FETCH USER EXAMS ERROR:", err.response?.data || err);
+      console.log("FETCH USER EXAMS ERROR:", err);
     } finally {
       setLoading(false);
     }

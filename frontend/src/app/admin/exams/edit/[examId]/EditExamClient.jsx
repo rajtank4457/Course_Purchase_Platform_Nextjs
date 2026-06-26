@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import axios from "axios";
-import API_URL from "@/config/api";
 import {
   CheckCircle,
   CircleDot,
@@ -14,6 +12,7 @@ import {
   Plus,
   X,
 } from "lucide-react";
+import { apiRequest, courseApi, studentApi, examApi } from "@/lib/apiHelper";
 
 const questionTypes = [
   {
@@ -217,11 +216,21 @@ export default function EditExamPage() {
     try {
       setPageLoading(true);
 
-      const res = await axios.get(`${API_URL}/exams/${editExamId}`, {
-        withCredentials: true,
-      });
+      const service = examApi.getExamById(editExamId);
 
-      const exam = res.data.data;
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Exam not found");
+        router.push("/admin/exams/examlist");
+        return;
+      }
+
+      const exam = res.data?.data;
 
       setIsPublishedExam(Number(exam.isPublished) === 1);
 
@@ -252,7 +261,7 @@ export default function EditExamPage() {
         setSelectedStudents(exam.selectedStudents.map(Number));
       }
     } catch (err) {
-      alert(err.response?.data?.message || "Exam not found");
+      alert("Exam not found");
       router.push("/admin/exams/examlist");
     } finally {
       setPageLoading(false);
@@ -262,14 +271,18 @@ export default function EditExamPage() {
   const fetchExamQuestions = async () => {
     if (!examId) return;
 
-    try {
-      const res = await axios.get(`${API_URL}/exams/${examId}/questions`, {
-        withCredentials: true,
-      });
+    const service = examApi.getExamQuestionsAdmin(examId);
 
-      setQuestions(res.data.data || []);
-    } catch (err) {
-      console.log("FETCH QUESTIONS ERROR:", err.response?.data || err);
+    const req = {
+      method: "GET",
+    };
+
+    const res = await apiRequest(service, req);
+
+    if (res.success) {
+      setQuestions(res.data?.data || []);
+    } else {
+      console.log("FETCH QUESTIONS ERROR:", res.message);
     }
   };
 
@@ -362,34 +375,43 @@ export default function EditExamPage() {
   }, []);
 
   const fetchCoursesWithChapters = async () => {
-    try {
-      const res = await axios.get(`${API_URL}/courses/with-chapters`, {
-        withCredentials: true,
-      });
+    const service = courseApi.getCoursesWithChapters;
 
-      setCourses(res.data.data || []);
-    } catch (err) {
-      console.log(err.response?.data || err);
+    const req = {
+      method: "GET",
+    };
+
+    const res = await apiRequest(service, req);
+
+    if (res.success) {
+      setCourses(res.data?.data || []);
+    } else {
+      console.log(res.message);
     }
   };
 
   const fetchStudents = async () => {
-    try {
-      const res = await axios.get(`${API_URL}/students`, {
-        withCredentials: true,
-      });
+    const service = studentApi.getStudents;
 
-      const list = Array.isArray(res.data) ? res.data : res.data.data || [];
+    const req = {
+      method: "GET",
+    };
 
-      setStudents(
-        list.map((student) => ({
-          ...student,
-          userId: Number(student.userId),
-        })),
-      );
-    } catch (err) {
-      console.log("FETCH STUDENTS ERROR:", err.response?.data || err);
+    const res = await apiRequest(service, req);
+
+    if (!res.success) {
+      console.log("FETCH STUDENTS ERROR:", res.message);
+      return;
     }
+
+    const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
+
+    setStudents(
+      list.map((student) => ({
+        ...student,
+        userId: Number(student.userId),
+      })),
+    );
   };
 
   const selectedCourse = courses.find(
@@ -452,14 +474,18 @@ export default function EditExamPage() {
   };
 
   const fetchAdminExams = async () => {
-    try {
-      const res = await axios.get(`${API_URL}/exams/all`, {
-        withCredentials: true,
-      });
+    const service = examApi.getAllExams;
 
-      setExams(res.data.data || []);
-    } catch (err) {
-      console.log("FETCH EXAMS ERROR:", err.response?.data || err);
+    const req = {
+      method: "GET",
+    };
+
+    const res = await apiRequest(service, req);
+
+    if (res.success) {
+      setExams(res.data?.data || []);
+    } else {
+      console.log("FETCH EXAMS ERROR:", res.message);
     }
   };
 
@@ -513,22 +539,35 @@ export default function EditExamPage() {
         isPublished: Number(examForm.isPublished),
       };
 
-      const url = isEditMode
-        ? `${API_URL}/exams/update`
-        : `${API_URL}/exams/add`;
+      const service = isEditMode ? examApi.updateExam : examApi.addExam;
 
-      const res = await axios.post(
-        url,
-        isEditMode ? { ...payload, examId: Number(editExamId) } : payload,
-        { withCredentials: true },
+      const req = {
+        method: "POST",
+        data: isEditMode
+          ? {
+              ...payload,
+              examId: Number(editExamId),
+            }
+          : payload,
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to save exam details");
+        return;
+      }
+
+      setExamId(
+        isEditMode
+          ? Number(editExamId)
+          : res.data?.examId || res.data?.data?.examId,
       );
 
-      setExamId(isEditMode ? Number(editExamId) : res.data.examId);
       setExamDetailsSaved(true);
       setCurrentStep(2);
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to save exam details");
-      console.log(err.response?.data || err);
+      alert("Failed to save exam details");
     } finally {
       setSavingExam(false);
     }
@@ -563,15 +602,24 @@ export default function EditExamPage() {
             : [],
       };
 
-      await axios.post(`${API_URL}/exams/access-rules/update`, payload, {
-        withCredentials: true,
-      });
+      const service = examApi.updateExamAccessRules;
+
+      const req = {
+        method: "POST",
+        data: payload,
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to save access rules");
+        return;
+      }
 
       setAccessRulesSaved(true);
       setCurrentStep(3);
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to save access rules");
-      console.log(err.response?.data || err);
+      alert("Failed to save access rules");
     } finally {
       setSavingExam(false);
     }
@@ -584,13 +632,24 @@ export default function EditExamPage() {
     }
 
     try {
-      await axios.post(
-        `${API_URL}/exams/publish`,
-        { examId },
-        { withCredentials: true },
-      );
+      const service = examApi.publishExam;
 
-      alert("Exam published successfully");
+      const req = {
+        method: "POST",
+        data: {
+          examId,
+        },
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to publish exam");
+        return;
+      }
+
+      alert(res.data?.message || "Exam published successfully");
+
       localStorage.removeItem(DRAFT_KEY);
       setExamId(null);
       setCurrentStep(1);
@@ -599,9 +658,10 @@ export default function EditExamPage() {
       setQuestions([]);
       setEditingQuestion(null);
       setSelectedStudents([]);
+
       router.push("/admin/exams/examlist");
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to publish exam");
+      alert("Failed to publish exam");
     }
   };
 
@@ -654,14 +714,21 @@ export default function EditExamPage() {
         sequenceNo: index + 1,
       }));
 
-      await axios.post(
-        `${API_URL}/exams/questions/sequence/update`,
-        {
+      const service = examApi.updateQuestionSequence;
+
+      const req = {
+        method: "POST",
+        data: {
           examId,
           questions: sequenceData,
         },
-        { withCredentials: true },
-      );
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to update question sequence");
+      }
     } catch (err) {
       console.log("SEQUENCE UPDATE ERROR:", err.response?.data || err);
       alert("Failed to update question sequence");
@@ -1518,14 +1585,21 @@ function MultipleChoiceForm({
         marks: Number(marks) || 1,
       };
 
-      const url =
-        editingQuestion?.questionType === "multiple"
-          ? `${API_URL}/exams/questions/update`
-          : `${API_URL}/exams/questions/add`;
+      const service = editingQuestion
+        ? examApi.updateExamQuestion
+        : examApi.addExamQuestion;
 
-      await axios.post(url, payload, {
-        withCredentials: true,
-      });
+      const req = {
+        method: "POST",
+        data: payload,
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to save question");
+        return;
+      }
 
       setQuestion("");
       setMarks(1);
@@ -1629,14 +1703,21 @@ function SingleChoiceForm({
         marks: Number(marks) || 1,
       };
 
-      const url =
-        editingQuestion?.questionType === "single"
-          ? `${API_URL}/exams/questions/update`
-          : `${API_URL}/exams/questions/add`;
+      const service = editingQuestion
+        ? examApi.updateExamQuestion
+        : examApi.addExamQuestion;
 
-      await axios.post(url, payload, {
-        withCredentials: true,
-      });
+      const req = {
+        method: "POST",
+        data: payload,
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to save question");
+        return;
+      }
 
       setQuestion("");
       setMarks(1);
@@ -1724,14 +1805,21 @@ function EssayForm({
         marks: Number(marks) || 1,
       };
 
-      const url =
-        editingQuestion?.questionType === "essay"
-          ? `${API_URL}/exams/questions/update`
-          : `${API_URL}/exams/questions/add`;
+      const service = editingQuestion
+        ? examApi.updateExamQuestion
+        : examApi.addExamQuestion;
 
-      await axios.post(url, payload, {
-        withCredentials: true,
-      });
+      const req = {
+        method: "POST",
+        data: payload,
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to save question");
+        return;
+      }
 
       setQuestion("");
       setMarks(1);
@@ -1855,14 +1943,21 @@ function BlankQuestionForm({
         marks: Number(marks) || 1,
       };
 
-      const url =
-        editingQuestion?.questionType === type
-          ? `${API_URL}/exams/questions/update`
-          : `${API_URL}/exams/questions/add`;
+      const service = editingQuestion
+        ? examApi.updateExamQuestion
+        : examApi.addExamQuestion;
 
-      await axios.post(url, payload, {
-        withCredentials: true,
-      });
+      const req = {
+        method: "POST",
+        data: payload,
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to save question");
+        return;
+      }
 
       setQuestion("");
       setMarks(1);

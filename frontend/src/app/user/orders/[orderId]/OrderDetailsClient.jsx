@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import axios from "axios";
-import API_URL from "@/config/api";
+import { apiRequest, orderApi } from "@/lib/apiHelper";
 import { ArrowLeft, Download } from "lucide-react";
 
 export default function OrderDetailsClient() {
@@ -16,32 +15,51 @@ export default function OrderDetailsClient() {
 
   const fetchOrderDetails = async () => {
     try {
-      const res = await axios.get(`${API_URL}/orders/${orderId}`, {
-        withCredentials: true,
-      });
+      const service = orderApi.getOrderDetails(orderId);
+      const req = {
+        method: "GET",
+      };
 
-      setOrder(res.data.order || null);
-      setItems(res.data.items || []);
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        console.log(res.message);
+        return;
+      }
+
+      setOrder(res.data?.order || null);
+      setItems(res.data?.items || []);
     } catch (err) {
       console.log(err);
     } finally {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     if (orderId) fetchOrderDetails();
   }, [orderId]);
 
   const getStatusText = (status) => {
-    if (status === "paid") return "Payment Successful";
-    if (status === "failed") return "Payment Failed";
+    if (status === "paid" || status === "success") {
+      return "Payment Successful";
+    }
+
+    if (status === "failed") {
+      return "Payment Failed";
+    }
+
     return "Payment Pending";
   };
 
   const getStatusClass = (status) => {
-    if (status === "paid") return "text-green-700";
-    if (status === "failed") return "text-red-600";
+    if (status === "paid" || status === "success") {
+      return "text-green-700";
+    }
+
+    if (status === "failed") {
+      return "text-red-600";
+    }
+
     return "text-orange-600";
   };
 
@@ -63,23 +81,36 @@ export default function OrderDetailsClient() {
 
   const handleDownloadInvoice = async () => {
     try {
-      const res = await axios.get(`${API_URL}/orders/${orderId}/invoice`, {
-        withCredentials: true,
-        responseType: "blob",
-      });
+      const service = orderApi.downloadInvoice(orderId);
 
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const req = {
+        method: "GET",
+        responseType: "blob",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message);
+        return;
+      }
+
+      const url = window.URL.createObjectURL(
+        new Blob([res.data], { type: "application/pdf" }),
+      );
+
       const link = document.createElement("a");
 
       link.href = url;
-      link.setAttribute("download", `invoice-order-${orderId}.pdf`);
+      link.download = `invoice-order-${orderId}.pdf`;
+
       document.body.appendChild(link);
       link.click();
 
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to download invoice");
+      alert("Failed to download invoice");
     }
   };
 

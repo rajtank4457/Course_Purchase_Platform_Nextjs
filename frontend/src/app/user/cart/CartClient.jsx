@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import axios from "axios";
-import API_URL from "@/config/api";
 import { ShoppingCart, Trash2, ShieldCheck } from "lucide-react";
+import { apiRequest, cartApi, couponApi, paymentApi } from "@/lib/apiHelper";
 
 export default function CartClient() {
   const router = useRouter();
@@ -17,12 +16,18 @@ export default function CartClient() {
 
   const fetchCart = async () => {
     try {
-      const userId = localStorage.getItem("userId");
+      const service = cartApi.getCart;
 
-      const res = await axios.get(`${API_URL}/cart`, {
-        params: { userId },
-        withCredentials: true,
-      });
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        console.log(res.message);
+        return;
+      }
 
       setCartItems(res.data.data || []);
     } catch (err) {
@@ -50,22 +55,25 @@ export default function CartClient() {
     try {
       const userId = localStorage.getItem("userId");
 
-      const res = await axios.post(
-        `${API_URL}/coupons/validate`,
-        {
+      const service = couponApi.validateCoupon;
+
+      const req = {
+        method: "POST",
+        data: {
           couponCode,
           subTotal: subtotal,
           userId,
         },
-        { withCredentials: true },
-      );
+      };
 
-      if (res.data.success) {
-        setDiscountAmt(res.data.data?.discount || 0);
+      const res = await apiRequest(service, req);
+
+      if (res.success) {
+        setDiscountAmt(res.data?.data?.discount || 0);
         setCouponError("");
       } else {
         setDiscountAmt(0);
-        setCouponError(res.data.message || "Invalid coupon");
+        setCouponError(res.message || "Invalid coupon");
       }
     } catch (err) {
       console.log(err);
@@ -75,25 +83,33 @@ export default function CartClient() {
   };
 
   const removeFromCart = async (cartId) => {
+    if (!cartId) {
+      alert("Cart ID missing");
+      return;
+    }
+
     try {
-      await axios.delete(`${API_URL}/cart/${cartId}`, {
-        withCredentials: true,
-      });
+      const service = cartApi.removeCartItem(cartId);
 
-      setCartItems((prev) => {
-        const updated = prev.filter(
-          (item) => Number(item.cartId) !== Number(cartId),
-        );
+      const req = {
+        method: "DELETE",
+      };
 
-        localStorage.setItem("cartItems", JSON.stringify(updated));
+      const res = await apiRequest(service, req);
 
-        return updated;
-      });
+      if (!res.success) {
+        alert(res.message || "Failed to remove course");
+        return;
+      }
+
+      setCartItems((prev) =>
+        prev.filter((item) => Number(item.cartId) !== Number(cartId)),
+      );
 
       window.dispatchEvent(new Event("cartUpdated"));
     } catch (err) {
       console.log(err);
-      alert(err.response?.data?.message || "Failed to remove course from cart");
+      alert("Failed to remove course from cart");
     }
   };
 
@@ -131,9 +147,11 @@ export default function CartClient() {
 
       const userId = localStorage.getItem("userId");
 
-      const orderRes = await axios.post(
-        `${API_URL}/payments/create-order`,
-        {
+      const service = paymentApi.createPaymentOrder;
+
+      const req = {
+        method: "POST",
+        data: {
           userId,
           courseQuantity: cartItems.length,
           subTotal: subtotal,
@@ -144,8 +162,14 @@ export default function CartClient() {
           platformFee,
           totalPrice: total,
         },
-        { withCredentials: true },
-      );
+      };
+
+      const orderRes = await apiRequest(service, req);
+
+      if (!orderRes.success) {
+        alert(orderRes.message);
+        return;
+      }
 
       const { order_id, orderId, amount, currency, key } = orderRes.data;
 
@@ -159,33 +183,42 @@ export default function CartClient() {
 
         handler: async function (response) {
           try {
-            const verify = await axios.post(
-              `${API_URL}/payments/verify`,
-              {
+            const service = paymentApi.verifyPayment;
+
+            const req = {
+              method: "POST",
+              data: {
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature,
               },
-              { withCredentials: true },
-            );
+            };
 
-            if (verify.data.success) {
+            const verify = await apiRequest(service, req);
+
+            if (verify.success) {
               if (couponCode) {
-                await axios.post(
-                  `${API_URL}/coupons/usage`,
-                  { couponCode },
-                  { withCredentials: true },
-                );
+                const service = couponApi.updateCouponUsage;
+
+                const req = {
+                  method: "POST",
+                  data: {
+                    couponCode,
+                  },
+                };
+
+                await apiRequest(service, req);
               }
 
               setCartItems([]);
               localStorage.removeItem("cartItems");
               window.dispatchEvent(new Event("cartUpdated"));
 
-              router.push(`/user/orders/${verify.data.data.orderId || orderId}`);
+              router.push(
+                `/user/orders/${verify.data?.data?.orderId || orderId}`,
+              );
             } else {
               alert("Payment verification failed");
-              router.push("/user/cart");
             }
           } catch (err) {
             console.log(err);
@@ -212,14 +245,17 @@ export default function CartClient() {
         razor.close();
 
         try {
-          await axios.post(
-            `${API_URL}/payments/failed`,
-            {
+          const service = paymentApi.paymentFailed;
+
+          const req = {
+            method: "POST",
+            data: {
               razorpay_order_id: order_id,
               error: response.error.description,
             },
-            { withCredentials: true },
-          );
+          };
+
+          await apiRequest(service, req);
 
           alert("Payment Failed");
           router.push("/user/cart");
@@ -307,7 +343,7 @@ export default function CartClient() {
                   </div>
 
                   <button
-                    onClick={() => removeFromCart(course.cartId)}
+                    onClick={() => removeFromCart(course.cartId || course.id)}
                     className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-red-600 hover:text-red-700"
                   >
                     <Trash2 className="h-4 w-4" />

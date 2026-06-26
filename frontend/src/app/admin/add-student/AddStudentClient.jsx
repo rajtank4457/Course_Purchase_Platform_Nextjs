@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import axios from "axios";
-import API_URL from "@/config/api";
+import { apiRequest, studentApi } from "@/lib/apiHelper";
 import { useRouter } from "next/navigation";
 import {
   Box,
@@ -50,14 +49,24 @@ export default function AddStudentClient() {
     try {
       setLoading(true);
 
-      const res = await axios.post(`${API_URL}/students/add`, student, {
-        withCredentials: true,
-      });
+      const service = studentApi.addStudent;
 
-      alert(res.data.message || "Student added successfully");
-      router.push("/admin/dashboard");
+      const req = {
+        method: "POST",
+        data: student,
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to add student");
+        return;
+      }
+
+      alert(res.data?.message || "Student added successfully");
+      router.push("/admin/students");
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to add student");
+      alert("Failed to add student");
     } finally {
       setLoading(false);
     }

@@ -1,7 +1,8 @@
 import { asyncHandler } from "../helpers/asyncHandler.js";
 import { getDb } from "../helpers/dbHelper.js";
-import { sendSuccess, sendError } from "../helpers/responseHelper.js";
+import { sendError } from "../helpers/responseHelper.js";
 import { requireUser } from "../helpers/authHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
 export const addToCart = asyncHandler(async (req, res) => {
     if (!requireUser(req, res)) return;
@@ -30,7 +31,11 @@ export const addToCart = asyncHandler(async (req, res) => {
     const course = courseRows[0];
 
     if (Number(course.courseType) === 0) {
-        return sendError(res, "Free course cannot be added to cart. Add it to library.", 400);
+        return sendError(
+            res,
+            "Free course cannot be added to cart. Add it to library.",
+            400
+        );
     }
 
     await db.query(
@@ -42,7 +47,11 @@ export const addToCart = asyncHandler(async (req, res) => {
         [req.userId, courseId, course.coursePrice]
     );
 
-    return sendSuccess(res, {}, "Course added to cart");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Course added to cart",
+        data: {},
+    });
 });
 
 export const getCart = asyncHandler(async (req, res) => {
@@ -72,7 +81,11 @@ export const getCart = asyncHandler(async (req, res) => {
         [req.userId]
     );
 
-    return sendSuccess(res, rows, "Cart fetched successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Cart fetched successfully",
+        data: rows,
+    });
 });
 
 export const getCartCount = asyncHandler(async (req, res) => {
@@ -85,7 +98,13 @@ export const getCartCount = asyncHandler(async (req, res) => {
         [req.userId]
     );
 
-    return sendSuccess(res, { count: rows[0].count }, "Cart count fetched");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Cart count fetched",
+        data: {
+            count: rows[0].count,
+        },
+    });
 });
 
 export const removeCartItem = asyncHandler(async (req, res) => {
@@ -104,5 +123,9 @@ export const removeCartItem = asyncHandler(async (req, res) => {
         return sendError(res, "Cart item not found", 404);
     }
 
-    return sendSuccess(res, {}, "Course removed from cart");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Course removed from cart",
+        data: {},
+    });
 });

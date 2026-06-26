@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import axios from "axios";
-import API_URL from "@/config/api";
 import { ArrowLeft } from "lucide-react";
+import { apiRequest, examApi } from "@/lib/apiHelper";
 
 export default function ExamResultClient() {
   const router = useRouter();
@@ -24,17 +23,26 @@ export default function ExamResultClient() {
 
   const fetchResult = async () => {
     try {
-      const res = await axios.get(`${API_URL}/exams/result/${attemptId}`, {
-        withCredentials: true,
-      });
+      const service = examApi.getExamResult(attemptId);
 
-      setResult(res.data.data);
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Result not found");
+        router.push("/user/courses");
+        return;
+      }
+
+      setResult(res.data?.data);
     } catch (err) {
-      alert(err.response?.data?.message || "Result not found");
+      alert("Result not found");
       router.push("/user/courses");
     }
   };
-
   if (!result) {
     return <div className="p-10 text-center font-bold">Loading result...</div>;
   }
@@ -82,18 +90,31 @@ export default function ExamResultClient() {
 
   const handleTryAgain = async () => {
     try {
-      const res = await axios.post(
-        `${API_URL}/exams/start`,
-        { examId: result.examId },
-        { withCredentials: true },
-      );
+      const service = examApi.startExam;
 
-      router.push(`/user/exams/${result.examId}/start`);
+      const req = {
+        method: "POST",
+        data: {
+          examId: result.examId,
+        },
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Unable to start exam again");
+        return;
+      }
+
+      const newAttemptId = res.data?.attemptId || res.data?.data?.attemptId;
+
+      router.push(
+        `/user/exams/${result.examId}/attempt?attemptId=${newAttemptId}`,
+      );
     } catch (err) {
-      alert(err.response?.data?.message || "Unable to start exam again");
+      alert("Unable to start exam again");
     }
   };
-
   return (
     <div className="min-h-screen bg-slate-50 px-6 py-10">
       <div className="mx-auto max-w-5xl">
@@ -179,7 +200,7 @@ function QuestionResultCard({ q, index }) {
   const isEssay = q.questionType === "essay";
 
   const essayPassed =
-    Number(q.questionObtainedMarks || 0) >= Number(q.marks || 0) * 0.4; 
+    Number(q.questionObtainedMarks || 0) >= Number(q.marks || 0) * 0.4;
 
   return (
     <div

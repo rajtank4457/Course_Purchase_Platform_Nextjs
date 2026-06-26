@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import axios from "axios";
 import API_URL from "@/config/api";
+import { apiRequest, courseApi, chapterApi } from "@/lib/apiHelper";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -153,17 +153,28 @@ export default function EditCourseChapterClient({ courseData, chapterData }) {
         formData.append("courseImg", courseImage);
       }
 
-      const res = await axios.post(`${API_URL}/courses/update`, formData, {
-        withCredentials: true,
+      const service = courseApi.updateCourse;
+
+      const req = {
+        method: "POST",
+        data: formData,
         headers: {
           "Content-Type": "multipart/form-data",
         },
-      });
+      };
 
-      alert(res.data.message || "Course updated successfully");
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to update course");
+        return;
+      }
+
+      alert(res.data?.message || "Course updated successfully");
+      router.push("/admin/courses");
       router.refresh();
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to update course");
+      alert("Failed to update course");
     } finally {
       setLoading(false);
     }
@@ -194,23 +205,31 @@ export default function EditCourseChapterClient({ courseData, chapterData }) {
           formData.append("files", file);
         });
 
-        const url = chapter.isNew
-          ? `${API_URL}/chapters/add`
-          : `${API_URL}/chapters/update`;
+        const service = chapter.isNew
+          ? chapterApi.addChapter
+          : chapterApi.updateChapter;
 
-        await axios.post(url, formData, {
-          withCredentials: true,
+        const req = {
+          method: "POST",
+          data: formData,
           headers: {
             "Content-Type": "multipart/form-data",
           },
-        });
+        };
+
+        const res = await apiRequest(service, req);
+
+        if (!res.success) {
+          alert(res.message || "Failed to save chapters");
+          return;
+        }
       }
 
       alert("Chapters saved successfully");
       router.push(`/admin/chapters/${course.courseSlug}`);
       router.refresh();
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to save chapters");
+      alert("Failed to save chapters");
     } finally {
       setLoading(false);
     }

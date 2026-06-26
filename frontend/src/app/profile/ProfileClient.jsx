@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
-import API_URL from "@/config/api";
+import { apiRequest, authApi } from "@/lib/apiHelper";
 import {
   User,
   Mail,
@@ -23,11 +22,20 @@ export default function ProfileClient() {
 
   const fetchProfile = async () => {
     try {
-      const res = await axios.get(`${API_URL}/auth/home`, {
-        withCredentials: true,
-      });
+      const service = authApi.getHomeUser;
 
-      setProfile(res.data.user || res.data.data || res.data);
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        console.log(res.message || "Failed to fetch profile");
+        return;
+      }
+
+      setProfile(res.data?.user || res.data?.data || res.data);
     } catch (error) {
       console.log(error);
     } finally {

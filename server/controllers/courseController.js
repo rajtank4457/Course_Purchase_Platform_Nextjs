@@ -1,6 +1,7 @@
 import { asyncHandler } from "../helpers/asyncHandler.js";
 import { getDb } from "../helpers/dbHelper.js";
-import { sendSuccess, sendError } from "../helpers/responseHelper.js";
+import { sendError } from "../helpers/responseHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
 const isAdminUser = (req) => {
     return (
@@ -58,7 +59,11 @@ export const getCourses = asyncHandler(async (req, res) => {
         [req.userId || 0]
     );
 
-    return sendSuccess(res, rows, "Courses fetched successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Courses fetched successfully",
+        data: rows,
+    });
 });
 
 export const getCoursesWithChapters = asyncHandler(async (req, res) => {
@@ -86,7 +91,11 @@ export const getCoursesWithChapters = asyncHandler(async (req, res) => {
         chapters: chapters.filter((chapter) => chapter.courseId === course.courseId),
     }));
 
-    return sendSuccess(res, result, "Courses with chapters fetched successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Courses with chapters fetched successfully",
+        data: result,
+    });
 });
 
 export const getCourseById = asyncHandler(async (req, res) => {
@@ -120,7 +129,11 @@ export const getCourseById = asyncHandler(async (req, res) => {
         return sendError(res, "Course not found", 404);
     }
 
-    return sendSuccess(res, rows[0], "Course fetched successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Course fetched successfully",
+        data: rows[0],
+    });
 });
 
 export const addCourse = asyncHandler(async (req, res) => {
@@ -177,15 +190,14 @@ export const addCourse = asyncHandler(async (req, res) => {
         ]
     );
 
-    return sendSuccess(
-        res,
-        {
+    return sendEncrypted(res, 201, {
+        success: true,
+        message: "Course added successfully",
+        data: {
             courseId: result.insertId,
             adminId: req.userId,
         },
-        "Course added successfully",
-        201
-    );
+    });
 });
 
 export const updateCourse = asyncHandler(async (req, res) => {
@@ -256,13 +268,13 @@ export const updateCourse = asyncHandler(async (req, res) => {
         return sendError(res, "Course not found", 404);
     }
 
-    return sendSuccess(
-        res,
-        {
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Course updated successfully",
+        data: {
             courseImg: newImage,
         },
-        "Course updated successfully"
-    );
+    });
 });
 
 export const deleteCourse = asyncHandler(async (req, res) => {
@@ -287,5 +299,9 @@ export const deleteCourse = asyncHandler(async (req, res) => {
         return sendError(res, "Course not found", 404);
     }
 
-    return sendSuccess(res, {}, "Course deleted successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Course deleted successfully",
+        data: {},
+    });
 });

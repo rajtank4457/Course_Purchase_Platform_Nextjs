@@ -1,6 +1,7 @@
 import { asyncHandler } from "../helpers/asyncHandler.js";
 import { getDb } from "../helpers/dbHelper.js";
-import { sendSuccess, sendError } from "../helpers/responseHelper.js";
+import { sendError } from "../helpers/responseHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 import { requireUser } from "../helpers/authHelper.js";
 
 export const getAllProgress = asyncHandler(async (req, res) => {
@@ -23,7 +24,11 @@ export const getAllProgress = asyncHandler(async (req, res) => {
     progressMap[row.chId] = Number(row.progress || 0);
   });
 
-  return sendSuccess(res, progressMap, "Progress fetched successfully");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Progress fetched successfully",
+    data: progressMap,
+  });
 });
 
 export const getChapterProgress = asyncHandler(async (req, res) => {
@@ -55,7 +60,11 @@ export const getChapterProgress = asyncHandler(async (req, res) => {
     sourceProgress: 0,
   };
 
-  return sendSuccess(res, progressData, "Chapter progress fetched successfully");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Chapter progress fetched successfully",
+    data: progressData,
+  });
 });
 
 export const saveChapterProgress = asyncHandler(async (req, res) => {
@@ -124,5 +133,9 @@ export const saveChapterProgress = asyncHandler(async (req, res) => {
     ]
   );
 
-  return sendSuccess(res, {}, "Progress saved successfully");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Progress saved successfully",
+    data: {},
+  });
 });

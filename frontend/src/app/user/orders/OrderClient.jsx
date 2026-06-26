@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import axios from "axios";
-import API_URL from "@/config/api";
 import { CheckCircle, XCircle, Clock } from "lucide-react";
+import { apiRequest, orderApi } from "@/lib/apiHelper";
 
 export default function OrderClient() {
   const router = useRouter();
@@ -14,11 +13,20 @@ export default function OrderClient() {
 
   const fetchOrders = async () => {
     try {
-      const res = await axios.get(`${API_URL}/orders`, {
-        withCredentials: true,
-      });
 
-      setOrders(res.data.data || []);
+      const service = orderApi.getOrders;
+      const req = {
+        method: "GET"
+      };
+      
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        console.log(res.message || "Failed to fetch orders");
+        return;
+      }
+
+      setOrders(res.data?.data || []);
     } catch (err) {
       console.log(err);
     } finally {
@@ -104,7 +112,9 @@ export default function OrderClient() {
                     >
                       <td className="px-3 py-4 text-center">
                         <button
-                          onClick={() => router.push(`/user/orders/${order.orderId}`)}
+                          onClick={() =>
+                            router.push(`/user/orders/${order.orderId}`)
+                          }
                           className="font-bold text-blue-600 underline hover:text-blue-800 cursor-pointer"
                         >
                           #{order.orderId}
@@ -157,4 +167,4 @@ export default function OrderClient() {
       </div>
     </div>
   );
-};
+}

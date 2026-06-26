@@ -1,6 +1,7 @@
 import { asyncHandler } from "../helpers/asyncHandler.js";
 import { getDb } from "../helpers/dbHelper.js";
-import { sendSuccess, sendError } from "../helpers/responseHelper.js";
+import { sendError } from "../helpers/responseHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
 const expireOldCoupons = async (db) => {
     const today = new Date().toISOString().split("T")[0];
@@ -90,14 +91,14 @@ export const validateCoupon = asyncHandler(async (req, res) => {
 
     discount = Math.min(discount, Number(subTotal));
 
-    return sendSuccess(
-        res,
-        {
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Coupon applied successfully",
+        data: {
             discount,
             coupon,
         },
-        "Coupon applied successfully"
-    );
+    });
 });
 
 export const updateCouponUsage = asyncHandler(async (req, res) => {
@@ -123,7 +124,11 @@ export const updateCouponUsage = asyncHandler(async (req, res) => {
         return sendError(res, "Coupon not found", 404);
     }
 
-    return sendSuccess(res, {}, "Coupon usage updated");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Coupon usage updated",
+        data: {},
+    });
 });
 
 export const getCoupons = asyncHandler(async (req, res) => {
@@ -149,7 +154,11 @@ export const getCoupons = asyncHandler(async (req, res) => {
     ORDER BY couponId DESC
   `);
 
-    return sendSuccess(res, coupons, "Coupons fetched successfully");
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Coupons fetched successfully",
+        data: coupons,
+    });
 });
 
 export const addCoupon = asyncHandler(async (req, res) => {
@@ -244,5 +253,9 @@ export const addCoupon = asyncHandler(async (req, res) => {
         ]
     );
 
-    return sendSuccess(res, {}, "Coupon added successfully", 201);
+    return sendEncrypted(res, 201, {
+        success: true,
+        message: "Coupon added successfully",
+        data: {},
+    });
 });

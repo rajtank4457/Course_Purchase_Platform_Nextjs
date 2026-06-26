@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
-import API_URL from "@/config/api";
 import { useRouter } from "next/navigation";
+import { apiRequest, orderApi } from "@/lib/apiHelper";
 import { CheckCircle, XCircle, Clock } from "lucide-react";
 import { Box, TablePagination } from "@mui/material";
 
@@ -18,9 +17,18 @@ export default function AdminOrdersClient() {
 
   const fetchOrders = async () => {
     try {
-      const res = await axios.get(`${API_URL}/orders/all`, {
-        withCredentials: true,
-      });
+      const service = orderApi.getAllOrders;
+
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        console.log(res.message || "Failed to fetch orders");
+        return;
+      }
 
       setOrders(res.data.data || []);
     } catch (err) {
@@ -207,7 +215,7 @@ export default function AdminOrdersClient() {
               page={page}
               onPageChange={(_, newPage) => setPage(newPage)}
               onRowsPerPageChange={(e) => {
-                setRowsPerPage(parseInt(e.target.value, 5));
+                setRowsPerPage(parseInt(e.target.value, 10));
                 setPage(0);
               }}
             />

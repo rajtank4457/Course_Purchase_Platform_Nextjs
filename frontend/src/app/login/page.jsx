@@ -3,8 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import axios from "axios";
-import API_URL from "@/config/api";
+import { apiRequest, authApi } from "@/lib/apiHelper";
 import { FiMail, FiLock, FiLogIn } from "react-icons/fi";
 
 function Login() {
@@ -39,17 +38,23 @@ function Login() {
         localStorage.setItem("device_id", deviceId);
       }
 
-      const res = await axios.post(
-        `${API_URL}/auth/login`,
-        {
+      const service = authApi.loginUser;
+
+      const req = {
+        method: "POST",
+        data: {
           email: values.email,
           password: values.password,
           deviceId,
         },
-        {
-          withCredentials: true,
-        },
-      );
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Login failed");
+        return;
+      }
 
       const data = res.data.data;
 
@@ -58,7 +63,7 @@ function Login() {
       localStorage.setItem("user", JSON.stringify(data.user));
 
       if (data.user?.adminId) {
-        localStorage.setItem("userId", data.user.adminId);  
+        localStorage.setItem("userId", data.user.adminId);
       } else {
         localStorage.setItem("userId", data.user.userId);
       }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { useRouter } from "next/navigation";
 import {
   Box,
@@ -34,6 +33,7 @@ import {
   useTheme,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
+import { apiRequest, adminApi } from "@/lib/apiHelper";
 
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -43,8 +43,6 @@ import PhoneIcon from "@mui/icons-material/Phone";
 import BusinessIcon from "@mui/icons-material/Business";
 import WcIcon from "@mui/icons-material/Wc";
 import SwapVertIcon from "@mui/icons-material/SwapVert";
-
-import API_URL from "@/config/api";
 
 const StyledTableCell = styled(TableCell)(({ theme }) => ({
   [`&.${tableCellClasses.head}`]: {
@@ -121,9 +119,18 @@ export default function AdminsClient() {
 
   const fetchAdmins = async () => {
     try {
-      const res = await axios.get(`${API_URL}/admins`, {
-        withCredentials: true,
-      });
+      const service = adminApi.getAdmins;
+
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        console.error(res.message);
+        return;
+      }
 
       const admins = Array.isArray(res.data)
         ? res.data
@@ -183,11 +190,21 @@ export default function AdminsClient() {
     if (!window.confirm(`Delete Admin ${row.AdminName}?`)) return;
 
     try {
-      const res = await axios.post(
-        `${API_URL}/admins/delete`,
-        { adminId: row.adminId || row.AdminId },
-        { withCredentials: true },
-      );
+      const service = adminApi.deleteAdmin;
+
+      const req = {
+        method: "POST",
+        data: {
+          adminId: row.adminId || row.AdminId,
+        },
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Delete failed");
+        return;
+      }
 
       if (res.data.success) {
         alert("Admin deleted successfully");
@@ -213,9 +230,19 @@ export default function AdminsClient() {
         role: selectedUser.role,
       };
 
-      const res = await axios.post(`${API_URL}/admins/update`, payload, {
-        withCredentials: true,
-      });
+      const service = adminApi.updateAdmin;
+
+      const req = {
+        method: "POST",
+        data: payload,
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Update failed");
+        return;
+      }
 
       if (res.data.success) {
         alert("Admin updated successfully");

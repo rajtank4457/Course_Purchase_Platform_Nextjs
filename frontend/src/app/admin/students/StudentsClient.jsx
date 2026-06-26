@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { useRouter, useSearchParams } from "next/navigation";
+import { apiRequest, studentApi } from "@/lib/apiHelper";
 import {
   Box,
   Button,
@@ -46,8 +46,6 @@ import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import BusinessIcon from "@mui/icons-material/Business";
 import SwapVertIcon from "@mui/icons-material/SwapVert";
 
-import API_URL from "@/config/api";
-
 const StyledTableCell = styled(TableCell)(({ theme }) => ({
   [`&.${tableCellClasses.head}`]: {
     backgroundColor: "#6d28d9",
@@ -84,7 +82,10 @@ function InfoItem({ icon, label, value }) {
     >
       <Box sx={{ color: "#64748b", mt: "2px", display: "flex" }}>{icon}</Box>
 
-      <Typography variant="body2" sx={{ color: "#475569", wordBreak: "break-word" }}>
+      <Typography
+        variant="body2"
+        sx={{ color: "#475569", wordBreak: "break-word" }}
+      >
         <b style={{ color: "#0f172a" }}>{label}: </b>
         {value || "N/A"}
       </Typography>
@@ -103,9 +104,13 @@ export default function StudentsClient() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [open, setOpen] = useState(false);
 
-  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
+  const [statusFilter, setStatusFilter] = useState(
+    searchParams.get("status") || "all",
+  );
   const [sortBy, setSortBy] = useState(searchParams.get("sortBy") || "id");
-  const [sortOrder, setSortOrder] = useState(searchParams.get("order") || "asc");
+  const [sortOrder, setSortOrder] = useState(
+    searchParams.get("order") || "asc",
+  );
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
@@ -129,9 +134,18 @@ export default function StudentsClient() {
 
   const fetchStudents = async () => {
     try {
-      const res = await axios.get(`${API_URL}/students`, {
-        withCredentials: true,
-      });
+      const service = studentApi.getStudents;
+
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        console.log(res.message || "Failed to fetch students");
+        return;
+      }
 
       const formattedData = res.data.data.map((user) => ({
         userId: user.userId,
@@ -213,11 +227,21 @@ export default function StudentsClient() {
     if (!window.confirm(`Delete Student ${row.StdName}?`)) return;
 
     try {
-      const res = await axios.post(
-        `${API_URL}/students/delete`,
-        { userId: row.userId || row.StdId },
-        { withCredentials: true }
-      );
+      const service = studentApi.deleteStudent;
+
+      const req = {
+        method: "POST",
+        data: {
+          userId: row.userId || row.StdId,
+        },
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Delete failed");
+        return;
+      }
 
       if (res.data.success) {
         alert("Student deleted successfully");
@@ -246,25 +270,34 @@ export default function StudentsClient() {
         isActive: selectedUser.isActive,
       };
 
-      const res = await axios.post(`${API_URL}/students/update`, payload, {
-        withCredentials: true,
-      });
+      const service = studentApi.updateStudent;
 
-      if (res.data.success) {
-        alert("Student updated successfully");
-        setOpen(false);
-        fetchStudents();
-      } else {
-        alert(res.data.message || "Update failed");
+      const req = {
+        method: "POST",
+        data: payload,
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Update failed");
+        return;
       }
+
+      alert(res.message || "Student updated successfully");
+
+      setOpen(false);
+      fetchStudents();
     } catch (error) {
       console.error(error);
-      alert("Update request failed");
+      alert(error.message || "Update request failed");
     }
   };
 
   const filteredRows = rows.filter(
-    (row) => statusFilter === "all" || String(row.isActive) === statusMap[statusFilter]
+    (row) =>
+      statusFilter === "all" ||
+      String(row.isActive) === statusMap[statusFilter],
   );
 
   const sortedRows = [...filteredRows].sort((a, b) => {
@@ -291,7 +324,7 @@ export default function StudentsClient() {
 
   const paginatedRows = sortedRows.slice(
     page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
+    page * rowsPerPage + rowsPerPage,
   );
 
   return (
@@ -477,15 +510,37 @@ export default function StudentsClient() {
 
               <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
                 <Stack spacing={1}>
-                  <InfoItem icon={<EmailIcon fontSize="small" />} label="Email" value={row.Email} />
-                  <InfoItem icon={<PhoneIcon fontSize="small" />} label="Phone" value={row.PhNo} />
-                  <InfoItem icon={<LocationOnIcon fontSize="small" />} label="Address" value={row.Addr} />
-                  <InfoItem icon={<BusinessIcon fontSize="small" />} label="City" value={row.City} />
-                  <InfoItem icon={<BusinessIcon fontSize="small" />} label="State" value={row.State} />
+                  <InfoItem
+                    icon={<EmailIcon fontSize="small" />}
+                    label="Email"
+                    value={row.Email}
+                  />
+                  <InfoItem
+                    icon={<PhoneIcon fontSize="small" />}
+                    label="Phone"
+                    value={row.PhNo}
+                  />
+                  <InfoItem
+                    icon={<LocationOnIcon fontSize="small" />}
+                    label="Address"
+                    value={row.Addr}
+                  />
+                  <InfoItem
+                    icon={<BusinessIcon fontSize="small" />}
+                    label="City"
+                    value={row.City}
+                  />
+                  <InfoItem
+                    icon={<BusinessIcon fontSize="small" />}
+                    label="State"
+                    value={row.State}
+                  />
                   <InfoItem
                     icon={<CalendarMonthIcon fontSize="small" />}
                     label="DOB"
-                    value={row.DOB ? new Date(row.DOB).toLocaleDateString() : "N/A"}
+                    value={
+                      row.DOB ? new Date(row.DOB).toLocaleDateString() : "N/A"
+                    }
                   />
 
                   <Box sx={{ display: "flex", gap: 1, pt: 1 }}>
@@ -494,7 +549,11 @@ export default function StudentsClient() {
                       variant="contained"
                       startIcon={<EditIcon />}
                       onClick={() => handleEdit(row)}
-                      sx={{ borderRadius: 3, textTransform: "none", fontWeight: 800 }}
+                      sx={{
+                        borderRadius: 3,
+                        textTransform: "none",
+                        fontWeight: 800,
+                      }}
                     >
                       Edit
                     </Button>
@@ -505,7 +564,11 @@ export default function StudentsClient() {
                       color="error"
                       startIcon={<DeleteIcon />}
                       onClick={() => handleDelete(row)}
-                      sx={{ borderRadius: 3, textTransform: "none", fontWeight: 800 }}
+                      sx={{
+                        borderRadius: 3,
+                        textTransform: "none",
+                        fontWeight: 800,
+                      }}
                     >
                       Delete
                     </Button>
@@ -530,7 +593,12 @@ export default function StudentsClient() {
               <TableRow>
                 <StyledTableCell>
                   <Box
-                    sx={{ display: "flex", alignItems: "center", gap: 0.5, cursor: "pointer" }}
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.5,
+                      cursor: "pointer",
+                    }}
                     onClick={toggleSortOrder}
                   >
                     ID <SwapVertIcon fontSize="small" />
@@ -553,7 +621,9 @@ export default function StudentsClient() {
                   <StyledTableCell>
                     <button
                       type="button"
-                      onClick={() => router.push(`/admin/students/${row.StdId}`)}
+                      onClick={() =>
+                        router.push(`/admin/students/${row.StdId}`)
+                      }
                       className="font-black text-purple-700 hover:underline"
                     >
                       #{row.StdId}
@@ -635,22 +705,78 @@ export default function StudentsClient() {
       </Box>
 
       {/* Dialog same as your current */}
-      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>Edit Student Details</DialogTitle>
 
         <DialogContent>
-          <TextField label="First Name" name="firstName" value={selectedUser?.firstName || ""} onChange={handleChange} fullWidth margin="dense" />
-          <TextField label="Last Name" name="lastName" value={selectedUser?.lastName || ""} onChange={handleChange} fullWidth margin="dense" />
-          <TextField label="Email" name="email" value={selectedUser?.email || ""} onChange={handleChange} fullWidth margin="dense" />
-          <TextField label="Phone" name="phoneNo" value={selectedUser?.phoneNo || ""} onChange={handleChange} fullWidth margin="dense" />
-          <TextField label="Address" name="Addr" value={selectedUser?.Addr || ""} onChange={handleChange} fullWidth margin="dense" />
-          <TextField label="City" name="City" value={selectedUser?.City || ""} onChange={handleChange} fullWidth margin="dense" />
-          <TextField label="State" name="State" value={selectedUser?.State || ""} onChange={handleChange} fullWidth margin="dense" />
+          <TextField
+            label="First Name"
+            name="firstName"
+            value={selectedUser?.firstName || ""}
+            onChange={handleChange}
+            fullWidth
+            margin="dense"
+          />
+          <TextField
+            label="Last Name"
+            name="lastName"
+            value={selectedUser?.lastName || ""}
+            onChange={handleChange}
+            fullWidth
+            margin="dense"
+          />
+          <TextField
+            label="Email"
+            name="email"
+            value={selectedUser?.email || ""}
+            onChange={handleChange}
+            fullWidth
+            margin="dense"
+          />
+          <TextField
+            label="Phone"
+            name="phoneNo"
+            value={selectedUser?.phoneNo || ""}
+            onChange={handleChange}
+            fullWidth
+            margin="dense"
+          />
+          <TextField
+            label="Address"
+            name="Addr"
+            value={selectedUser?.Addr || ""}
+            onChange={handleChange}
+            fullWidth
+            margin="dense"
+          />
+          <TextField
+            label="City"
+            name="City"
+            value={selectedUser?.City || ""}
+            onChange={handleChange}
+            fullWidth
+            margin="dense"
+          />
+          <TextField
+            label="State"
+            name="State"
+            value={selectedUser?.State || ""}
+            onChange={handleChange}
+            fullWidth
+            margin="dense"
+          />
           <TextField
             label="Date of Birth"
             name="DOB"
             type="date"
-            value={selectedUser?.DOB ? String(selectedUser.DOB).split("T")[0] : ""}
+            value={
+              selectedUser?.DOB ? String(selectedUser.DOB).split("T")[0] : ""
+            }
             onChange={handleChange}
             fullWidth
             margin="dense"
@@ -659,7 +785,12 @@ export default function StudentsClient() {
 
           <FormControl fullWidth margin="dense">
             <InputLabel>Active Status</InputLabel>
-            <Select name="isActive" label="Active Status" value={selectedUser?.isActive ?? 0} onChange={handleChange}>
+            <Select
+              name="isActive"
+              label="Active Status"
+              value={selectedUser?.isActive ?? 0}
+              onChange={handleChange}
+            >
               <MenuItem value={1}>Active</MenuItem>
               <MenuItem value={0}>Inactive</MenuItem>
             </Select>
@@ -677,5 +808,4 @@ export default function StudentsClient() {
       </Dialog>
     </Box>
   );
-
 }

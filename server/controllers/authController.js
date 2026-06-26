@@ -12,6 +12,7 @@ import {
     createUserSession,
     endSessionByToken,
 } from "../helpers/sessionHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
 export const sessionToken = asyncHandler(async (req, res) => {
     const { publicToken } = req.body;
@@ -36,7 +37,12 @@ export const sessionToken = asyncHandler(async (req, res) => {
         maxAge: 24 * 60 * 60 * 1000,
     });
 
-    return sendSuccess(res, {}, "Session token created");
+    // sessionToken
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Session token created",
+        data: {},
+    });
 });
 
 export const register = asyncHandler(async (req, res) => {
@@ -124,22 +130,26 @@ export const register = asyncHandler(async (req, res) => {
 
     setAuthCookie(res, loginToken);
 
-    return sendSuccess(
+    // register
+    return sendEncrypted(
         res,
+        201,
         {
-            role: "user",
-            type: "user",
-            user: {
-                userId: result.insertId,
-                firstName,
-                lastName,
-                email,
+            success: true,
+            message: "User Registered Successfully",
+            data: {
                 role: "user",
                 type: "user",
+                user: {
+                    userId: result.insertId,
+                    firstName,
+                    lastName,
+                    email,
+                    role: "user",
+                    type: "user",
+                },
             },
         },
-        "User Registered Successfully",
-        201
     );
 });
 
@@ -190,9 +200,11 @@ export const login = asyncHandler(async (req, res) => {
 
         setAuthCookie(res, token);
 
-        return sendSuccess(
-            res,
-            {
+        // admin login
+        return sendEncrypted(res, 200, {
+            success: true,
+            message: "Admin Login Successful",
+            data: {
                 role: admin.role,
                 type: "admin",
                 user: {
@@ -203,8 +215,7 @@ export const login = asyncHandler(async (req, res) => {
                     type: "admin",
                 },
             },
-            "Admin Login Successful"
-        );
+        });
     }
 
     const [userRows] = await db.query(
@@ -270,9 +281,11 @@ export const login = asyncHandler(async (req, res) => {
         [user.userId, ipAddress, deviceType, deviceId || null, userAgent]
     );
 
-    return sendSuccess(
-        res,
-        {
+    // user login
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "User Login Successful",
+        data: {
             role: "user",
             type: "user",
             user: {
@@ -285,8 +298,7 @@ export const login = asyncHandler(async (req, res) => {
                 isActive: user.isActive,
             },
         },
-        "User Login Successful"
-    );
+    });
 });
 
 export const logout = asyncHandler(async (req, res) => {
@@ -297,7 +309,12 @@ export const logout = asyncHandler(async (req, res) => {
 
     clearAuthCookie(res);
 
-    return sendSuccess(res, {}, "Logout Successful");
+    // logout
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Logout Successful",
+        data: {},
+    });
 });
 
 export const home = asyncHandler(async (req, res) => {
@@ -317,7 +334,9 @@ export const home = asyncHandler(async (req, res) => {
             return sendError(res, "Admin not registered", 404);
         }
 
-        return res.status(200).json({
+        return sendEncrypted(res, 200, {
+            success: true,
+            message: "Admin fetched successfully",
             user: {
                 ...rows[0],
                 type: "admin",
@@ -340,7 +359,9 @@ export const home = asyncHandler(async (req, res) => {
         return sendError(res, "User not registered", 404);
     }
 
-    return res.status(200).json({
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "User fetched successfully",
         user: {
             ...rows[0],
             role: "user",

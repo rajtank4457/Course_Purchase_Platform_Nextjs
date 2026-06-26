@@ -1,5 +1,6 @@
 import { connectToDatabase } from "../lib/db.js";
 import PDFDocument from "pdfkit";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
 const getStatusText = (status) => {
     if (status === "paid") return "Payment Successful";
@@ -34,8 +35,9 @@ export const getOrders = async (req, res) => {
             [req.userId]
         );
 
-        return res.status(200).json({
+        return sendEncrypted(res, 200, {
             success: true,
+            message: "Orders fetched successfully",
             data: rows,
         });
     } catch (err) {
@@ -131,10 +133,13 @@ export const getOrderDetails = async (req, res) => {
             [req.params.orderId]
         );
 
-        return res.status(200).json({
+        return sendEncrypted(res, 200, {
             success: true,
-            order,
-            items,
+            message: "Order details fetched successfully",
+            data: {
+                order,
+                items,
+            },
         });
     } catch (err) {
         return res.status(500).json({
@@ -168,8 +173,9 @@ export const getAllOrders = async (req, res) => {
       ORDER BY orderId DESC
     `);
 
-        return res.status(200).json({
+        return sendEncrypted(res, 200, {
             success: true,
+            message: "All orders fetched successfully",
             data: orders,
         });
     } catch (err) {
@@ -226,10 +232,13 @@ export const getAdminOrderDetails = async (req, res) => {
             [req.params.orderId]
         );
 
-        return res.status(200).json({
+        return sendEncrypted(res, 200, {
             success: true,
-            order: orderRows[0],
-            items,
+            message: "Order details fetched successfully",
+            data: {
+                order: orderRows[0],
+                items,
+            },
         });
     } catch (err) {
         return res.status(500).json({

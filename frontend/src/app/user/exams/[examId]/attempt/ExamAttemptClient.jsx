@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import axios from "axios";
-import API_URL from "@/config/api";
 import { ArrowLeft, ArrowRight, CheckCircle } from "lucide-react";
+import { apiRequest, examApi } from "@/lib/apiHelper";
 
 export default function ExamAttemptClient() {
   const { examId } = useParams();
@@ -25,18 +24,29 @@ export default function ExamAttemptClient() {
 
   const fetchExamQuestions = async () => {
     try {
-      const res = await axios.get(
-        `${API_URL}/exams/${examId}/attempt?attemptId=${attemptId}`,
-        { withCredentials: true },
-      );
+      const service = examApi.getExamAttemptQuestions(examId);
 
-      console.log("EXAM QUESTIONS:", res.data.data);
+      const req = {
+        method: "GET",
+        params: {
+          attemptId,
+        },
+      };
 
-      setExam(res.data.data);
-      const durationMinutes = Number(res.data.data.durationMinutes || 0);
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Cannot load exam");
+        router.push("/user/courses");
+        return;
+      }
+
+      setExam(res.data?.data);
+
+      const durationMinutes = Number(res.data?.data?.durationMinutes || 0);
       setTimeLeft(durationMinutes * 60);
     } catch (err) {
-      alert(err.response?.data?.message || "Cannot load exam");
+      alert("Cannot load exam");
       router.push("/user/courses");
     }
   };
@@ -111,21 +121,30 @@ export default function ExamAttemptClient() {
 
         if (!confirmSubmit) return;
       }
+
       setSubmitting(true);
       submittedRef.current = true;
 
-      const res = await axios.post(
-        `${API_URL}/exams/submit`,
-        {
+      const service = examApi.submitExam;
+
+      const req = {
+        method: "POST",
+        data: {
           attemptId,
           answers,
         },
-        { withCredentials: true },
-      );
+      };
 
-      router.push(`/user/exams/result/${res.data.attemptId}`);
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Submit failed");
+        return;
+      }
+
+      router.push(`/user/exams/result/${res.data?.attemptId || attemptId}`);
     } catch (err) {
-      alert(err.response?.data?.message || "Submit failed");
+      alert("Submit failed");
     } finally {
       setSubmitting(false);
     }

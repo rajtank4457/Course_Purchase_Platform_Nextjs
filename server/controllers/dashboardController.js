@@ -1,6 +1,6 @@
 import { asyncHandler } from "../helpers/asyncHandler.js";
 import { getDb } from "../helpers/dbHelper.js";
-import { sendSuccess } from "../helpers/responseHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 import { requireAdmin } from "../helpers/authHelper.js";
 
 export const getDashboardStats = asyncHandler(async (req, res) => {
@@ -17,8 +17,10 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
   const [[revenue]] = await db.query(`SELECT COALESCE(SUM(totalPrice), 0) AS total FROM orders WHERE paymentStatus = 'paid'`);
   const [[libraryCourses]] = await db.query(`SELECT COUNT(*) AS count FROM user_library`);
 
-  return sendSuccess(res,
-    {
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Dashboard statistics fetched successfully",
+    data: {
       students: students.count,
       activeStudents: activeStudents.count,
       inactiveStudents: inactiveStudents.count,
@@ -28,5 +30,5 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       revenue: revenue.total,
       libraryCourses: libraryCourses.count,
     },
-  );
+  });
 });

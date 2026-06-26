@@ -85,12 +85,12 @@ router.get(
     getChaptersByCourseSlug
 );
 
+router.post("/update-content", verifyToken, updateChapterContent);
+
 router.get(
     "/:slug",
     verifyToken,
     getChapterBySlug
 );
-
-router.post("/update-content", verifyToken, updateChapterContent);
 
 export default router;

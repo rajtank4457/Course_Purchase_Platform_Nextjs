@@ -2,9 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import axios from "axios";
+import {
+  apiRequest,
+  authApi,
+  libraryApi,
+  progressApi,
+  examApi,
+  certificateApi,
+} from "@/lib/apiHelper";
 import API_URL from "@/config/api";
-import { ArrowLeft, BookOpen, Lock, PlayCircle } from "lucide-react";
+import { ArrowLeft, BookOpen, Lock, PlayCircle, Download } from "lucide-react";
 
 export default function MyCoursesClient() {
   const router = useRouter();
@@ -20,11 +27,19 @@ export default function MyCoursesClient() {
 
   const fetchUser = async () => {
     try {
-      const res = await axios.get(`${API_URL}/auth/home`, {
-        withCredentials: true,
-      });
+      const service = authApi.getHomeUser;
 
-      const user = res.data.user;
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+      if (!res.success) {
+        router.push("/login");
+        return;
+      }
+
+      const user = res.data?.user || res.data?.data || res.data;
 
       setRole(user.role || user.type || "");
       setStudent(user);
@@ -36,38 +51,54 @@ export default function MyCoursesClient() {
 
   const fetchCourses = async () => {
     try {
-      const res = await axios.get(`${API_URL}/library`, {
-        withCredentials: true,
-      });
+      const service = libraryApi.getLibraryCourses;
 
-      setCourses(res.data.data || []);
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (res.success) {
+        setCourses(res.data?.data || []);
+      }
     } catch (err) {
-      console.log("COURSE ERROR:", err.response?.data || err);
+      console.log("COURSE ERROR:", err);
     }
   };
 
   const fetchProgress = async () => {
     try {
-      const res = await axios.get(`${API_URL}/progress`, {
-        withCredentials: true,
-      });
+      const service = progressApi.getAllProgress;
 
-      setProgressMap(res.data.data || {});
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (res.success) {
+        setProgressMap(res.data?.data || {});
+      }
     } catch (err) {
-      console.log("PROGRESS ERROR:", err.response?.data || err);
+      console.log("PROGRESS ERROR:", err);
     }
   };
 
   const fetchAvailableExams = async () => {
     try {
-      const res = await axios.get(`${API_URL}/exams/available`, {
-        withCredentials: true,
-      });
+      const service = examApi.getAvailableExams;
 
-      const list = res.data.data || [];
-      setExams(list);
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+      if (res.success) {
+        setExams(res.data?.data || []);
+      }
     } catch (err) {
-      console.log("EXAM ERROR:", err.response?.data || err);
+      console.log("EXAM ERROR:", err);
     }
   };
 
@@ -90,6 +121,36 @@ export default function MyCoursesClient() {
 
     loadData();
   }, [userLoaded]);
+
+  const handleDownloadCertificate = async (courseId) => {
+    try {
+      const service = certificateApi.downloadCourseCertificate(courseId);
+      const req = {
+        method: "GET",
+        responseType: "blob",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Certificate not available");
+        return;
+      }
+
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.setAttribute("download", `certificate-course-${courseId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Failed to download certificate");
+    }
+  };
 
   const getCourseProgress = (chapters = []) => {
     if (!chapters.length) return 0;
@@ -181,6 +242,13 @@ export default function MyCoursesClient() {
               const courseProgress = getCourseProgress(course.chapters || []);
               const courseExams = getCourseExams(course.courseId);
 
+              const courseTest = courseExams[0];
+
+              const canDownloadCertificate =
+                courseProgress >= 100 &&
+                courseTest?.hasResult &&
+                courseTest?.isPassed;
+
               return (
                 <div
                   key={course.courseId}
@@ -244,7 +312,13 @@ export default function MyCoursesClient() {
                       </p>
 
                       {courseExams.map((exam) => (
-                        <ExamCard key={exam.examId} exam={exam} />
+                        <ExamCard
+                          key={exam.examId}
+                          exam={exam}
+                          courseId={course.courseId}
+                          canDownloadCertificate={canDownloadCertificate}
+                          onDownloadCertificate={handleDownloadCertificate}
+                        />
                       ))}
                     </div>
                   )}
@@ -332,7 +406,12 @@ export default function MyCoursesClient() {
   );
 }
 
-function ExamCard({ exam, compact = false }) {
+function ExamCard({
+  exam,
+  courseId,
+  canDownloadCertificate = false,
+  onDownloadCertificate,
+}) {
   const router = useRouter();
   const locked = !exam.canStart;
 
@@ -344,9 +423,7 @@ function ExamCard({ exam, compact = false }) {
     >
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h3 className="mt-2 text-sm font-black text-gray-900">
-            {exam.examTitle}
-          </h3>
+          <h3 className="text-sm font-black text-gray-900">{exam.examTitle}</h3>
         </div>
 
         {exam.hasResult ? null : locked ? (
@@ -367,6 +444,16 @@ function ExamCard({ exam, compact = false }) {
           </button>
         )}
       </div>
+
+      {canDownloadCertificate && (
+        <button
+          onClick={() => onDownloadCertificate(courseId)}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-purple-700 px-4 py-3 text-xs font-bold text-white hover:bg-purple-800"
+        >
+          <Download className="h-4 w-4" />
+          Download Certificate
+        </button>
+      )}
 
       {locked && !exam.hasResult && (
         <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs font-bold text-red-600">

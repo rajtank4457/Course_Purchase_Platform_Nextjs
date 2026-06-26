@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import API_URL from "@/config/api";
+import { decryptData } from "@/lib/cryptoHelper";
 import CourseActionButton from "./CourseActionButton";
 import { Crown, BadgeCheck, Users, PlayCircle, Lock } from "lucide-react";
 import CourseChapterLink from "./CourseChapterLink";
@@ -16,8 +17,14 @@ async function getCourses() {
 
   if (!res.ok) return [];
 
-  const data = await res.json();
-  return data.data || [];
+  const response = await res.json();
+
+  const data =
+    response.encrypted && response.payload
+      ? decryptData(response.payload)
+      : response;
+
+  return Array.isArray(data.data) ? data.data : [];
 }
 
 async function getCart() {
@@ -32,8 +39,14 @@ async function getCart() {
 
   if (!res.ok) return [];
 
-  const data = await res.json();
-  return data.data || [];
+  const response = await res.json();
+
+  const data =
+    response.encrypted && response.payload
+      ? decryptData(response.payload)
+      : response;
+
+  return Array.isArray(data.data) ? data.data : [];
 }
 
 const isNewCourse = (createdAt) => {
@@ -48,7 +61,9 @@ const isNewCourse = (createdAt) => {
 
 export default async function UserDashboard() {
   const courses = await getCourses();
+  const safeCourses = Array.isArray(courses) ? courses : [];
   const cartItems = await getCart();
+  const safeCartItems = Array.isArray(cartItems) ? cartItems : [];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -69,9 +84,9 @@ export default async function UserDashboard() {
           </div>
 
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {courses.map((course) => {
-              const isInCart = cartItems.some(
-                (item) => Number(item.courseId) === Number(course.courseId)
+            {safeCourses.map((course) => {
+              const isInCart = safeCartItems.some(
+                (item) => Number(item.courseId) === Number(course.courseId),
               );
 
               const isInLibrary = Number(course.hasCourse) === 1;

@@ -2,12 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import axios from "axios";
 import * as XLSX from "xlsx";
 import YouTube from "react-youtube";
 import { CKEditor } from "@ckeditor/ckeditor5-react";
 import ClassicEditor from "@ckeditor/ckeditor5-build-classic";
-import API_URL from "@/config/api";
 import {
   ArrowLeft,
   ExternalLink,
@@ -19,6 +17,8 @@ import {
   Pencil,
   X,
 } from "lucide-react";
+import API_URL from "@/config/api";
+import { apiRequest, chapterApi } from "@/lib/apiHelper";
 
 export default function ChapterDetailsClient() {
   const router = useRouter();
@@ -38,9 +38,19 @@ export default function ChapterDetailsClient() {
 
   const fetchChapter = async () => {
     try {
-      const res = await axios.get(`${API_URL}/chapters/${slug}`, {
-        withCredentials: true,
-      });
+      const service = chapterApi.getChapterBySlug(slug);
+
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to load chapter");
+        router.push("/admin/courses");
+        return;
+      }
 
       const data = res.data.data;
 
@@ -104,11 +114,15 @@ export default function ChapterDetailsClient() {
 
     if (["xlsx", "xls"].includes(ext)) {
       try {
-        const res = await axios.get(fileUrl, {
-          responseType: "arraybuffer",
-        });
+        const res = await fetch(fileUrl);
 
-        const workbook = XLSX.read(res.data, { type: "array" });
+        if (!res.ok) {
+          throw new Error("Failed to open Excel file");
+        }
+
+        const arrayBuffer = await res.arrayBuffer();
+
+        const workbook = XLSX.read(arrayBuffer, { type: "array" });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
 
@@ -154,18 +168,26 @@ export default function ChapterDetailsClient() {
     try {
       setSaving(true);
 
-      const res = await axios.post(
-        `${API_URL}/chapters/update-content`,
-        {
+      const service = chapterApi.updateChapterContent;
+
+      const req = {
+        method: "POST",
+        data: {
           slug: chapter.slug,
           content,
         },
-        { withCredentials: true },
-      );
+      };
 
-      alert(res.data.message || "Content saved successfully");
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to save content");
+        return;
+      }
+
+      alert(res.data?.message || "Content saved successfully");
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to save content");
+      alert("Failed to save content");
     } finally {
       setSaving(false);
     }

@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import path from "path";
 import http from "http";
 import { Server } from "socket.io";
+import { decryptRequest } from "./middleware/cryptoMiddleware.js";
 
 import authRoutes from "./routes/authRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
@@ -21,6 +22,8 @@ import progressRoutes from "./routes/progressRoutes.js";
 import examRoutes from "./routes/examRoutes.js";
 import { startExamPublishJob } from "./cron/examPublishJob.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import certificateRoutes from "./routes/certificateRoutes.js";
+import activityRoutes from "./routes/activityRoutes.js";
 
 dotenv.config();
 
@@ -46,6 +49,8 @@ app.options(
 app.use(express.json());
 app.use(cookieParser());
 
+app.use(decryptRequest);
+
 /* Routes */
 
 app.use("/auth", authRoutes);
@@ -62,6 +67,8 @@ app.use("/chapters", chapterRoutes);
 app.use("/progress", progressRoutes);
 app.use("/exams", examRoutes);
 app.use("/notifications", notificationRoutes);
+app.use("/certificates", certificateRoutes);
+app.use("/activity", activityRoutes);
 
 /* Static Uploads */
 

@@ -6,6 +6,7 @@ import {
   evaluateBlank,
 } from "../helpers/examHelper.js";
 import { notifyUser } from "../helpers/notificationHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
 export const addExam = async (req, res) => {
   try {
@@ -128,10 +129,12 @@ export const addExam = async (req, res) => {
       ]
     );
 
-    return res.status(201).json({
+    return sendEncrypted(res, 201, {
       success: true,
       message: "Exam details saved successfully",
-      examId: result.insertId,
+      data: {
+        examId: result.insertId,
+      },
     });
   } catch (err) {
     console.log("ADD EXAM ERROR:", err);
@@ -209,9 +212,10 @@ export const addExamQuestion = async (req, res) => {
       ]
     );
 
-    return res.status(201).json({
+    return sendEncrypted(res, 201, {
       success: true,
       message: "Question added successfully",
+      data: {},
     });
   } catch (err) {
     console.log("ADD QUESTION ERROR:", err);
@@ -291,9 +295,10 @@ export const updateExamAccessRules = async (req, res) => {
       );
     }
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       message: "Access rules updated successfully",
+      data: {},
     });
   } catch (err) {
     console.log("UPDATE EXAM ACCESS RULES ERROR:", err);
@@ -421,9 +426,10 @@ export const publishExam = async (req, res) => {
       createdAt: new Date().toISOString(),
     });
 
-    return res.status(200).json({
+    return sendEncrypted(res, 200, {
       success: true,
       message: "Exam published successfully",
+      data: {},
     });
   } catch (err) {
     console.log("PUBLISH EXAM ERROR:", err);
@@ -617,7 +623,7 @@ export const getAvailableExams = async (req, res) => {
       };
     });
 
-    return res.status(200).json({
+    return sendEncrypted(res, 200, {
       success: true,
       data,
     });
@@ -777,10 +783,12 @@ export const startExam = async (req, res) => {
       [examId, userId, attemptCount + 1, exam.totalMarks]
     );
 
-    return res.status(201).json({
+    return sendEncrypted(res, 201, {
       success: true,
       message: "Exam started",
-      attemptId: result.insertId,
+      data: {
+        attemptId: result.insertId,
+      },
     });
   } catch (err) {
     return res.status(500).json({
@@ -837,7 +845,7 @@ export const getExamStartInfo = async (req, res) => {
 
     const exam = rows[0];
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       data: {
         ...exam,
@@ -911,7 +919,7 @@ export const getExamAttemptQuestions = async (req, res) => {
       [examId]
     );
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       data: {
         ...examRows[0],
@@ -919,7 +927,9 @@ export const getExamAttemptQuestions = async (req, res) => {
           ...q,
           options: safeJSON(q.options),
           correctAnswers:
-            q.questionType === "essay" ? safeJSON(q.correctAnswers) : [],
+            q.questionType === "essay"
+              ? safeJSON(q.correctAnswers)
+              : [],
         })),
       },
     });
@@ -1065,12 +1075,14 @@ export const submitExam = async (req, res) => {
       [obtainedMarks, finalStatus, attemptId]
     );
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       message: "Exam submitted",
-      attemptId,
-      obtainedMarks,
-      status: finalStatus,
+      data: {
+        attemptId,
+        obtainedMarks,
+        status: finalStatus,
+      },
     });
   } catch (err) {
     console.log("SUBMIT EXAM ERROR:", err);
@@ -1178,7 +1190,7 @@ export const getExamResult = async (req, res) => {
       };
     });
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       data: {
         ...result,
@@ -1216,7 +1228,7 @@ export const getExamQuestionsAdmin = async (req, res) => {
       [examId]
     );
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       data: rows.map((q) => ({
         ...q,
@@ -1270,9 +1282,10 @@ export const updateExamQuestion = async (req, res) => {
       ]
     );
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       message: "Question updated successfully",
+      data: {},
     });
   } catch (err) {
     return res.status(500).json({
@@ -1297,9 +1310,10 @@ export const deleteExamQuestion = async (req, res) => {
       [questionId]
     );
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       message: "Question deleted successfully",
+      data: {},
     });
   } catch (err) {
     return res.status(500).json({
@@ -1349,7 +1363,7 @@ export const getAllExams = async (req, res) => {
       ORDER BY examId DESC
     `);
 
-    return res.status(200).json({
+    return sendEncrypted(res, 200, {
       success: true,
       data: rows,
     });
@@ -1398,9 +1412,10 @@ export const deleteExam = async (req, res) => {
 
     await db.query(`DELETE FROM exam_details WHERE examId = ?`, [examId]);
 
-    return res.status(200).json({
+    return sendEncrypted(res, 200, {
       success: true,
       message: "Exam deleted successfully",
+      data: {},
     });
   } catch (err) {
     console.log("DELETE EXAM ERROR:", err);
@@ -1511,10 +1526,12 @@ export const updateExam = async (req, res) => {
       ],
     );
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       message: "Exam updated successfully",
-      examId,
+      data: {
+        examId,
+      },
     });
   } catch (err) {
     console.log("UPDATE EXAM ERROR:", err);
@@ -1556,7 +1573,7 @@ export const getExamById = async (req, res) => {
       });
     }
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       data: rows[0],
     });
@@ -1644,7 +1661,7 @@ export const getPendingEssayAttempts = async (req, res) => {
       ORDER BY ea.submittedAt DESC
     `);
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       data: rows,
     });
@@ -1752,7 +1769,7 @@ export const getEssayCheckDetails = async (req, res) => {
         safeJSON(q.evaluation, {})?.manualCheck === true,
     }));
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       data: {
         ...attempt,
@@ -1865,10 +1882,12 @@ export const checkEssayManually = async (req, res) => {
     const pendingCount = Number(pendingEssayRows[0]?.pendingCount || 0);
 
     if (pendingCount > 0) {
-      return res.json({
+      return sendEncrypted(res, 200, {
         success: true,
         message: "Essay answer saved. More essays pending.",
-        completed: false,
+        data: {
+          completed: false,
+        },
       });
     }
 
@@ -1922,12 +1941,14 @@ export const checkEssayManually = async (req, res) => {
       attemptId,
     });
 
-    return res.json({
+    return sendEncrypted(res, 200, {
       success: true,
       message: "All essays checked successfully",
-      completed: true,
-      obtainedMarks: finalObtainedMarks,
-      status: finalStatus,
+      data: {
+        completed: true,
+        obtainedMarks: finalObtainedMarks,
+        status: finalStatus,
+      },
     });
   } catch (err) {
     console.log("CHECK ESSAY MANUALLY ERROR:", err);
@@ -1965,9 +1986,10 @@ export const updateQuestionSequence = async (req, res) => {
       );
     }
 
-    return res.status(200).json({
+    return sendEncrypted(res, 200, {
       success: true,
       message: "Question sequence updated successfully",
+      data: {},
     });
   } catch (error) {
     console.error("UPDATE QUESTION SEQUENCE ERROR:", error);

@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import axios from "axios";
+import { apiRequest, courseApi } from "@/lib/apiHelper";
 import API_URL from "@/config/api";
 import Link from "next/link";
 import {
   ArrowRight,
   ShoppingCart,
-  Crown, BadgeCheck,
+  Crown,
+  BadgeCheck,
   Star,
   Users,
   PlayCircle,
@@ -24,13 +25,20 @@ export default function Home() {
 
   const fetchCourses = async () => {
     try {
-      const res = await axios.get(`${API_URL}/courses`, {
-        withCredentials: true,
-      });
 
-      setCourses(res.data.data);
+      const service = courseApi.getCourses;
+      const req = {
+        method: "GET",
+      }
+
+      const res = await apiRequest(service, req);
+
+      const coursesData = res.data?.data || res.data || [];
+
+      setCourses(Array.isArray(coursesData) ? coursesData : []);
     } catch (err) {
       console.log(err);
+      setCourses([]);
     } finally {
       setLoading(false);
     }
@@ -40,10 +48,11 @@ export default function Home() {
     fetchCourses();
   }, []);
 
-  const latestCourses = [...courses]
+  const safeCourses = Array.isArray(courses) ? courses : [];
+
+  const latestCourses = [...safeCourses]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 4);
-
 
   // NEW COURSE
   const isNewCourse = (createdAt) => {
@@ -54,7 +63,6 @@ export default function Home() {
 
     return diffHours <= 24;
   };
-
 
   return (
     <div className="min-h-screen bg-gray-50">

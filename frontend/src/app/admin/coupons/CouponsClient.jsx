@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { useRouter } from "next/navigation";
 import {
   Box,
@@ -21,7 +20,7 @@ import {
   Typography,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
-import API_URL from "@/config/api";
+import { apiRequest, couponApi } from "@/lib/apiHelper";
 
 const StyledTableCell = styled(TableCell)(({ theme }) => ({
   [`&.${tableCellClasses.head}`]: {
@@ -56,11 +55,18 @@ export default function CouponsClient() {
 
   const fetchCoupons = async () => {
     try {
-      const res = await axios.get(`${API_URL}/coupons`, {
-        withCredentials: true,
-      });
+      const service = couponApi.getCoupons;
 
-      console.log("COUPONS RESPONSE:", res.data);
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to fetch coupons");
+        return;
+      }
 
       const coupons = Array.isArray(res.data)
         ? res.data
@@ -70,11 +76,10 @@ export default function CouponsClient() {
 
       setCoupons(coupons);
     } catch (err) {
-      console.error("FETCH COUPONS ERROR:", err.response?.data || err);
-      alert(err.response?.data?.message || "Failed to fetch coupons");
+      console.error("FETCH COUPONS ERROR:", err);
+      alert("Failed to fetch coupons");
     }
   };
-
   useEffect(() => {
     fetchCoupons();
   }, []);

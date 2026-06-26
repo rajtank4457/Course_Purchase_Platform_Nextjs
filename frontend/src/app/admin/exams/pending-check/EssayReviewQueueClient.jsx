@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import axios from "axios";
+import { apiRequest, examApi } from "@/lib/apiHelper";
 import {
   Clock,
   Eye,
@@ -12,7 +12,6 @@ import {
   BookOpen,
   ClipboardCheck,
 } from "lucide-react";
-import API_URL from "@/config/api";
 
 export default function EssayReviewQueueClient() {
   const router = useRouter();
@@ -25,26 +24,34 @@ export default function EssayReviewQueueClient() {
     try {
       setLoading(true);
 
-      const res = await axios.get(`${API_URL}/exams/admin/pending-essays`, {
-        withCredentials: true,
-      });
+      const service = examApi.getPendingEssayAttempts;
 
-      setAttempts(res.data.data || []);
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message || "Failed to load pending essays");
+        return;
+      }
+
+      setAttempts(res.data?.data || []);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to load pending essays");
+      alert("Failed to load pending essays");
     } finally {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchPendingEssays();
   }, []);
 
   const filteredAttempts = attempts.filter((item) => {
-    const text = `${item.studentName} ${item.examTitle} ${item.courseName}`
-      .toLowerCase();
+    const text =
+      `${item.studentName} ${item.examTitle} ${item.courseName}`.toLowerCase();
 
     return text.includes(search.toLowerCase());
   });
@@ -71,9 +78,7 @@ export default function EssayReviewQueueClient() {
             </div>
 
             <div className="rounded-2xl bg-purple-700 px-6 py-4 text-white">
-              <p className="text-sm font-semibold opacity-80">
-                Pending Essays
-              </p>
+              <p className="text-sm font-semibold opacity-80">Pending Essays</p>
               <p className="text-3xl font-black">{attempts.length}</p>
             </div>
           </div>
@@ -192,9 +197,7 @@ export default function EssayReviewQueueClient() {
                         <button
                           type="button"
                           onClick={() =>
-                            router.push(
-                              `/admin/essay-check/${item.attemptId}`
-                            )
+                            router.push(`/admin/essay-check/${item.attemptId}`)
                           }
                           className="inline-flex items-center gap-2 rounded-xl bg-purple-700 px-4 py-2 text-sm font-black text-white hover:bg-purple-800"
                         >

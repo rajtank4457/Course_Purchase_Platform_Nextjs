@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
-import API_URL from "@/config/api";
+import { apiRequest, courseApi, chapterApi } from "@/lib/apiHelper";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -94,11 +93,21 @@ export default function AddCourseClient() {
   };
 
   const fetchCourses = async () => {
-    const res = await axios.get(`${API_URL}/courses`, {
-      withCredentials: true,
-    });
+    try {
+      const service = courseApi.getCourses;
 
-    setCourses(res.data.data || []);
+      const req = {
+        method: "GET",
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (res.success) {
+        setCourses(res.data?.data || []);
+      }
+    } catch (err) {
+      console.log(err);
+    }
   };
 
   useEffect(() => {
@@ -148,13 +157,22 @@ export default function AddCourseClient() {
         formData.append("courseImg", courseImage);
       }
 
-      const res = await axios.post(`${API_URL}/courses/add`, formData, {
-        withCredentials: true,
+      const service = courseApi.addCourse;
+
+      const req = {
+        method: "POST",
+        data: formData,
         headers: {
           "Content-Type": "multipart/form-data",
         },
-      });
+      };
 
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message);
+        return;
+      }
       alert(res.data.message || "Course added successfully");
 
       setCourse({
@@ -219,16 +237,22 @@ export default function AddCourseClient() {
         });
       });
 
-      const res = await axios.post(
-        `${API_URL}/chapters/add-multiple`,
-        formData,
-        {
-          withCredentials: true,
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
+      const service = chapterApi.addMultipleChapters;
+
+      const req = {
+        method: "POST",
+        data: formData,
+        headers: {
+          "Content-Type": "multipart/form-data",
         },
-      );
+      };
+
+      const res = await apiRequest(service, req);
+
+      if (!res.success) {
+        alert(res.message);
+        return;
+      }
 
       alert(res.data.message || "Chapters added successfully");
 

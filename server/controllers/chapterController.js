@@ -1,7 +1,8 @@
 import { asyncHandler } from "../helpers/asyncHandler.js";
 import { getDb } from "../helpers/dbHelper.js";
-import { sendSuccess, sendError } from "../helpers/responseHelper.js";
+import { sendError } from "../helpers/responseHelper.js";
 import { insertChapterFiles } from "../helpers/fileHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
 const isAdminUser = (req) => {
   return (
@@ -72,15 +73,14 @@ export const addChapter = asyncHandler(async (req, res) => {
 
   await insertChapterFiles(db, result.insertId, req.files || []);
 
-  return sendSuccess(
-    res,
-    {
+  return sendEncrypted(res, 201, {
+    success: true,
+    message: "Chapter added successfully",
+    data: {
       chId: result.insertId,
       totalFiles: req.files?.length || 0,
     },
-    "Chapter added successfully",
-    201
-  );
+  });
 });
 
 export const addMultipleChapters = asyncHandler(async (req, res) => {
@@ -160,7 +160,11 @@ export const addMultipleChapters = asyncHandler(async (req, res) => {
     await insertChapterFiles(db, result.insertId, chapterFiles);
   }
 
-  return sendSuccess(res, {}, "All chapters added successfully", 201);
+  return sendEncrypted(res, 201, {
+    success: true,
+    message: "All chapters added successfully",
+    data: {},
+  });
 });
 
 export const updateChapter = asyncHandler(async (req, res) => {
@@ -226,15 +230,14 @@ export const updateChapter = asyncHandler(async (req, res) => {
 
     await insertChapterFiles(db, result.insertId, files);
 
-    return sendSuccess(
-      res,
-      {
+    return sendEncrypted(res, 201, {
+      success: true,
+      message: "Chapter added successfully",
+      data: {
         chId: result.insertId,
         addedFiles: files.length,
       },
-      "Chapter added successfully",
-      201
-    );
+    });
   }
 
   const [chapterRows] = await db.query(
@@ -275,15 +278,15 @@ export const updateChapter = asyncHandler(async (req, res) => {
 
   await insertChapterFiles(db, chId, files);
 
-  return sendSuccess(
-    res,
-    {
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Chapter updated successfully",
+    data: {
       chId,
       newSlug: chapterSlug,
       addedFiles: files.length,
     },
-    "Chapter updated successfully"
-  );
+  });
 });
 
 export const getChaptersByCourseSlug = asyncHandler(async (req, res) => {
@@ -382,7 +385,11 @@ export const deleteChapter = asyncHandler(async (req, res) => {
     return sendError(res, "Chapter not found", 404);
   }
 
-  return sendSuccess(res, {}, "Chapter deleted successfully");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Chapter deleted successfully",
+    data: {},
+  });
 });
 
 export const getChapterBySlug = asyncHandler(async (req, res) => {
@@ -436,14 +443,13 @@ export const getChapterBySlug = asyncHandler(async (req, res) => {
     [chapter.chId]
   );
 
-  return sendSuccess(
-    res,
-    {
-      ...chapter,
-      sources,
-    },
-    "Chapter fetched successfully"
-  );
+  chapter.sources = sources || [];
+
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Chapter fetched successfully",
+    data: chapter,
+  });
 });
 
 export const updateChapterContent = asyncHandler(async (req, res) => {
@@ -468,5 +474,9 @@ export const updateChapterContent = asyncHandler(async (req, res) => {
     return sendError(res, "Chapter not found", 404);
   }
 
-  return sendSuccess(res, {}, "Content saved successfully");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Content saved successfully",
+    data: {},
+  });
 });

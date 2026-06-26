@@ -1,6 +1,7 @@
 import { asyncHandler } from "../helpers/asyncHandler.js";
 import { getDb } from "../helpers/dbHelper.js";
-import { sendSuccess, sendError } from "../helpers/responseHelper.js";
+import { sendError } from "../helpers/responseHelper.js";
+import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 import { requireUser } from "../helpers/authHelper.js";
 
 export const addToLibrary = asyncHandler(async (req, res) => {
@@ -41,7 +42,11 @@ export const addToLibrary = asyncHandler(async (req, res) => {
     [req.userId, courseId]
   );
 
-  return sendSuccess(res, {}, "Course added to library");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Course added to library",
+    data: {},
+  });
 });
 
 export const getLibraryCourses = asyncHandler(async (req, res) => {
@@ -70,7 +75,11 @@ export const getLibraryCourses = asyncHandler(async (req, res) => {
   );
 
   if (courses.length === 0) {
-    return sendSuccess(res, [], "Library courses fetched successfully");
+    return sendEncrypted(res, 200, {
+      success: true,
+      message: "Library courses fetched successfully",
+      data: [],
+    });
   }
 
   const courseIds = courses.map((course) => course.courseId);
@@ -104,5 +113,9 @@ export const getLibraryCourses = asyncHandler(async (req, res) => {
     };
   });
 
-  return sendSuccess(res, result, "Library courses fetched successfully");
+  return sendEncrypted(res, 200, {
+    success: true,
+    message: "Library courses fetched successfully",
+    data: result,
+  });
 });
