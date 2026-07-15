@@ -1,6 +1,7 @@
 import CryptoJS from "crypto-js";
 
 const SECRET_KEY = process.env.NEXT_PUBLIC_API_SECRET_KEY;
+const ENCRYPTION_EXPIRY_MS = 60 * 1000;
 
 const getKey = () => {
   if (!SECRET_KEY || SECRET_KEY.length !== 32) {
@@ -14,32 +15,47 @@ const getKey = () => {
 
 export const encryptData = (data) => {
   const key = getKey();
-
   const iv = CryptoJS.lib.WordArray.random(16);
 
-  const encrypted = CryptoJS.AES.encrypt(JSON.stringify(data), key, {
+  const payload = {
+    data,
+    expiresAt: Date.now() + ENCRYPTION_EXPIRY_MS,
+  };
+
+  const encrypted = CryptoJS.AES.encrypt(JSON.stringify(payload), key, {
     iv,
     mode: CryptoJS.mode.CBC,
     padding: CryptoJS.pad.Pkcs7,
   });
 
+  const combined = iv.clone().concat(encrypted.ciphertext);
+
   return {
-    iv: iv.toString(CryptoJS.enc.Base64),
-    encryptedData: encrypted.ciphertext.toString(CryptoJS.enc.Base64),
+    data: CryptoJS.enc.Base64.stringify(combined),
   };
 };
 
-export const decryptData = ({ iv, encryptedData }) => {
+export const decryptData = (payload) => {
   const key = getKey();
 
-  const parsedIv = CryptoJS.enc.Base64.parse(iv);
+  const combined = CryptoJS.enc.Base64.parse(payload);
+
+  const iv = CryptoJS.lib.WordArray.create(
+    combined.words.slice(0, 4),
+    16
+  );
+
+  const encryptedData = CryptoJS.lib.WordArray.create(
+    combined.words.slice(4),
+    combined.sigBytes - 16
+  );
 
   const cipherParams = CryptoJS.lib.CipherParams.create({
-    ciphertext: CryptoJS.enc.Base64.parse(encryptedData),
+    ciphertext: encryptedData,
   });
 
   const bytes = CryptoJS.AES.decrypt(cipherParams, key, {
-    iv: parsedIv,
+    iv,
     mode: CryptoJS.mode.CBC,
     padding: CryptoJS.pad.Pkcs7,
   });
@@ -50,5 +66,39 @@ export const decryptData = ({ iv, encryptedData }) => {
     throw new Error("Decrypt failed");
   }
 
-  return JSON.parse(decrypted);
+  const parsedPayload = JSON.parse(decrypted);
+
+  if (!parsedPayload.expiresAt) {
+    throw new Error("Expiry missing");
+  }
+
+  if (Date.now() > Number(parsedPayload.expiresAt)) {
+    throw new Error("Encrypted data expired");
+  }
+
+  return parsedPayload.data;
 };
+
+export const splitEncryptedPayloadForTesting = (payload) => {
+  const combined = CryptoJS.enc.Base64.parse(payload);
+
+  const iv = CryptoJS.lib.WordArray.create(
+    combined.words.slice(0, 4),
+    16
+  );
+
+  const encryptedData = CryptoJS.lib.WordArray.create(
+    combined.words.slice(4),
+    combined.sigBytes - 16
+  );
+
+  return {
+    iv: iv.toString(CryptoJS.enc.Base64),
+    encryptedData: encryptedData.toString(CryptoJS.enc.Base64),
+  };
+};
+
+if (typeof window !== "undefined") {
+  window.testDecryptData = decryptData;
+  window.splitEncryptedPayloadForTesting = splitEncryptedPayloadForTesting;
+}

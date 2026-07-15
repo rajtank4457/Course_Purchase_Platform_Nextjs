@@ -1,21 +1,28 @@
 import { asyncHandler } from "../helpers/asyncHandler.js";
-import { getDb } from "../helpers/dbHelper.js";
+import { runQuery } from "../helpers/dbHelper.js";
 import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
 export const getMyNotifications = asyncHandler(async (req, res) => {
-  const db = await getDb();
 
-  const [rows] = await db.query(
+  const rows = await runQuery(
     `
     SELECT
-      notificationId, title, message, type,
-      examId, attemptId, isRead, createdAt
+        notificationId,
+        userId,
+        organizationId,
+        title,
+        message,
+        type,
+        examId,
+        attemptId,
+        isRead,
+        createdAt
     FROM notifications
     WHERE userId = ?
-    ORDER BY notificationId DESC
-    LIMIT 30
+    AND organizationId = ?
+    ORDER BY notificationId DESC;
     `,
-    [req.userId]
+    [req.userId, req.organizationId]
   );
 
   return sendEncrypted(res, 200, {
@@ -29,16 +36,16 @@ export const getMyNotifications = asyncHandler(async (req, res) => {
 
 export const markNotificationRead = asyncHandler(async (req, res) => {
   const { notificationId } = req.body;
-  const db = await getDb();
 
-  await db.query(
+  await runQuery(
     `
     UPDATE notifications
     SET isRead = 1
     WHERE notificationId = ?
-    AND userId = ?
+      AND userId = ?
+      AND organizationId = ?
     `,
-    [notificationId, req.userId]
+    [notificationId, req.userId, req.organizationId]
   );
 
   return sendEncrypted(res, 200, {
@@ -49,11 +56,13 @@ export const markNotificationRead = asyncHandler(async (req, res) => {
 });
 
 export const clearAllNotifications = asyncHandler(async (req, res) => {
-  const db = await getDb();
-
-  await db.query(
-    `DELETE FROM notifications WHERE userId = ?`,
-    [req.userId]
+  await runQuery(
+    `
+    DELETE FROM notifications
+    WHERE userId = ?
+      AND organizationId = ?
+    `,
+    [req.userId, req.organizationId]
   );
 
   return sendEncrypted(res, 200, {

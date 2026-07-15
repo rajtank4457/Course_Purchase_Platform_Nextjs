@@ -8,30 +8,37 @@ export const startExamPublishJob = (io) => {
 
             const [exams] = await db.query(
                 `
-        SELECT examId, examTitle, courseId
-        FROM exam_details
-        WHERE publishMode = 'scheduled'
-        AND isPublished = 0
-        AND scheduledPublishAt <= NOW()
-        `
+                SELECT
+                    e.examId,
+                    e.examTitle,
+                    e.courseId,
+                    c.organizationId
+                FROM exam_details e
+                JOIN course_details c
+                ON e.courseId = c.courseId
+                WHERE e.publishMode='scheduled'
+                AND e.isPublished=0
+                AND e.scheduledPublishAt<=NOW();
+                `
             );
 
             for (const exam of exams) {
+                console.log("Exam Data:", exam);
                 await db.query(
                     `
-          UPDATE exam_details
-          SET isPublished = 1, publishedAt = NOW()
-          WHERE examId = ?
-          `,
+                    UPDATE exam_details
+                    SET isPublished = 1, publishedAt = NOW()
+                    WHERE examId = ?
+                    `,
                     [exam.examId]
                 );
 
                 const [students] = await db.query(
                     `
-          SELECT userId
-          FROM user_library
-          WHERE courseId = ?
-          `,
+                    SELECT userId
+                    FROM user_library
+                    WHERE courseId = ?
+                    `,
                     [exam.courseId]
                 );
 
@@ -41,10 +48,25 @@ export const startExamPublishJob = (io) => {
 
                     await db.query(
                         `
-            INSERT INTO notifications (userId, title, message, type)
-            VALUES (?, ?, ?, ?)
-            `,
-                        [student.userId, title, message, "exam"]
+                        INSERT INTO notifications
+                        (
+                            userId,
+                            organizationId,
+                            title,
+                            message,
+                            type,
+                            examId
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        `,
+                        [
+                            student.userId,
+                            exam.organizationId,
+                            title,
+                            message,
+                            "exam",
+                            exam.examId
+                        ]
                     );
 
                     io.to(`user_${student.userId}`).emit("newNotification", {

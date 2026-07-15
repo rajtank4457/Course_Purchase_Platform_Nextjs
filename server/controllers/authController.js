@@ -1,17 +1,15 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { UAParser } from "ua-parser-js";
-import { asyncHandler } from "../helpers/asyncHandler.js";
-import { getDb } from "../helpers/dbHelper.js";
-import { sendSuccess, sendError } from "../helpers/responseHelper.js";
 import {
     createLoginToken,
-    setAuthCookie,
-    clearAuthCookie,
     deactivateOldSessions,
     createUserSession,
     endSessionByToken,
 } from "../helpers/sessionHelper.js";
+import { asyncHandler } from "../helpers/asyncHandler.js";
+import { getDb, findOne, insertRow } from "../helpers/dbHelper.js";
+import { sendError } from "../helpers/responseHelper.js";
 import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
 export const sessionToken = asyncHandler(async (req, res) => {
@@ -30,31 +28,27 @@ export const sessionToken = asyncHandler(async (req, res) => {
         { expiresIn: "1d" }
     );
 
-    res.cookie("auth_token", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 24 * 60 * 60 * 1000,
-    });
-
-    // sessionToken
     return sendEncrypted(res, 200, {
         success: true,
         message: "Session token created",
-        data: {},
+        data: {
+            token,
+        },
     });
 });
 
 export const register = asyncHandler(async (req, res) => {
-    const token = req.cookies.auth_token;
+    const authHeader = req.headers.authorization;
 
-    if (!token) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return sendError(res, "Session token missing", 401);
     }
 
+    const token = authHeader.split(" ")[1];
+
     const decoded = jwt.verify(token, process.env.JWT_KEY);
 
-    if (decoded.purpose !== "guest_session") {
+    if (decoded.purpose !== "guest_session" || decoded.type !== "guest") {
         return sendError(res, "Invalid session token", 403);
     }
 
@@ -63,11 +57,13 @@ export const register = asyncHandler(async (req, res) => {
         lastName,
         email,
         password,
+        organizationId,
         phoneNo,
         address,
         city,
         state,
         dob,
+        deviceId,
     } = req.body;
 
     if (!firstName || !email || !password) {
@@ -87,27 +83,20 @@ export const register = asyncHandler(async (req, res) => {
 
     const hashPassword = await bcrypt.hash(password, 10);
 
-    const [result] = await db.query(
-        `
-    INSERT INTO user_details
-    (
-      firstName, lastName, email, password, phoneNo,
-      address, city, state, dob, isActive
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `,
-        [
-            firstName,
-            lastName || null,
-            email,
-            hashPassword,
-            phoneNo || null,
-            address || null,
-            city || null,
-            state || null,
-            dob || null,
-        ]
-    );
+    const result = await insertRow("user_details", {
+        firstName,
+        lastName: lastName || null,
+        email,
+        password: hashPassword,
+        organizationId: req.organizationId || organizationId,
+        phoneNo: phoneNo || null,
+        address: address || null,
+        city: city || null,
+        state: state || null,
+        dob: dob || null,
+        deviceId: deviceId || null,
+        isActive: 1,
+    });
 
     const loginToken = createLoginToken({
         id: result.insertId,
@@ -115,6 +104,9 @@ export const register = asyncHandler(async (req, res) => {
         email,
         role: "user",
         type: "user",
+        organizationId: req.organizationId || organizationId || null,
+        isOwner: 0,
+        roleId: null,
     });
 
     await deactivateOldSessions(db, {
@@ -128,29 +120,140 @@ export const register = asyncHandler(async (req, res) => {
         token: loginToken,
     });
 
-    setAuthCookie(res, loginToken);
-
-    // register
-    return sendEncrypted(
-        res,
-        201,
-        {
-            success: true,
-            message: "User Registered Successfully",
-            data: {
+    return sendEncrypted(res, 201, {
+        success: true,
+        message: "User Registered Successfully",
+        data: {
+            token: loginToken,
+            role: "user",
+            type: "user",
+            user: {
+                userId: result.insertId,
+                firstName,
+                lastName,
+                email,
+                organizationId: req.organizationId || organizationId || null,
                 role: "user",
                 type: "user",
-                user: {
-                    userId: result.insertId,
-                    firstName,
-                    lastName,
-                    email,
-                    role: "user",
-                    type: "user",
-                },
-            },
+            }
         },
+    });
+});
+
+export const adminRegister = asyncHandler(async (req, res) => {
+    const {
+        adminName,
+        gender,
+        phNo,
+        email,
+        password,
+        organizationName,
+    } = req.body;
+
+    const requestedRole = req.body.role;
+
+    if (requestedRole && requestedRole !== "admin") {
+        return sendError(
+            res,
+            "Faculty cannot register publicly. Faculty must be added by organization admin.",
+            403
+        );
+    }
+
+    if (!adminName || !email || !password || !organizationName) {
+        return sendError(res, "Admin name, email, password and organization name are required", 400);
+    }
+
+    const role = "admin";
+
+    const db = await getDb();
+
+    const [exists] = await db.query(
+        `SELECT adminId FROM admins WHERE email = ? LIMIT 1`,
+        [email]
     );
+
+    if (exists.length) {
+        return sendError(res, "Email already exists", 409);
+    }
+
+    const [roleRows] = await db.query(
+        `SELECT roleId FROM roles WHERE LOWER(roleName) = 'admin' LIMIT 1`
+    );
+
+    if (!roleRows.length) {
+        return sendError(res, "Admin role not found", 400);
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const [result] = await db.query(
+        `
+        INSERT INTO admins
+        (
+        adminName,
+        gender,
+        phNo,
+        email,
+        password,
+        role,
+        roleId,
+        organizationId,
+        isOwner,
+        createdBy,
+        approvalStatus,
+        subscriptionStatus,
+        isActive
+        )
+        VALUES (?, ?, ?, ?, ?, 'admin', ?, NULL, 1, NULL, 'PENDING', 'NONE', 0)
+        `,
+        [
+            adminName,
+            gender || null,
+            phNo || null,
+            email,
+            hashedPassword,
+            roleRows[0].roleId,
+        ]
+    );
+
+    await db.query(
+        `
+    INSERT INTO organizations
+    (
+      organizationName,
+      ownerAdminId,
+      status
+    )
+    VALUES (?, ?, 'SUSPENDED')
+    `,
+        [organizationName, result.insertId]
+    );
+
+    const [orgRows] = await db.query(
+        `SELECT organizationId FROM organizations WHERE ownerAdminId = ? LIMIT 1`,
+        [result.insertId]
+    );
+
+    await db.query(
+        `
+    UPDATE admins
+    SET organizationId = ?
+    WHERE adminId = ?
+    `,
+        [orgRows[0].organizationId, result.insertId]
+    );
+
+    return sendEncrypted(res, 201, {
+        success: true,
+        message:
+            "Organization registration request sent to Super Admin. After approval, subscription purchase is required.",
+        data: {
+            adminId: result.insertId,
+            organizationId: orgRows[0].organizationId,
+            role,
+        },
+    });
 });
 
 export const login = asyncHandler(async (req, res) => {
@@ -160,15 +263,30 @@ export const login = asyncHandler(async (req, res) => {
         return sendError(res, "Email and password are required", 400);
     }
 
+
     const db = await getDb();
 
-    const [adminRows] = await db.query(
+    const admin = await findOne(
         `SELECT * FROM admins WHERE email = ? LIMIT 1`,
         [email]
     );
 
-    if (adminRows.length > 0) {
-        const admin = adminRows[0];
+    if (admin) {
+        if (admin.role !== "super_admin" && admin.approvalStatus === "PENDING") {
+            return sendError(
+                res,
+                "Your account is waiting for Super Admin approval",
+                403
+            );
+        }
+
+        if (admin.role !== "super_admin" && admin.approvalStatus === "REJECTED") {
+            return sendError(res, "Your registration request was rejected", 403);
+        }
+
+        if (admin.role !== "super_admin" && admin.approvalStatus !== "APPROVED") {
+            return sendError(res, "Your account is not approved", 403);
+        }
 
         if (Number(admin.isActive) === 0) {
             return sendError(res, "Admin account is inactive", 403);
@@ -180,10 +298,56 @@ export const login = asyncHandler(async (req, res) => {
             return sendError(res, "Password not matching", 401);
         }
 
+        let subscriptionStatus = "INACTIVE";
+        let needsSubscription = false;
+
+        if (admin.role === "super_admin") {
+            subscriptionStatus = "ACTIVE";
+            needsSubscription = false;
+        } else {
+            const [subscriptionRows] = await db.query(
+                `
+                SELECT 
+                    os.subscriptionId,
+                    os.paymentStatus,
+                    os.isActive,
+                    os.startDate,
+                    os.endDate,
+                    os.planId
+                FROM organization_subscriptions os
+                WHERE os.organizationId = ?
+                AND os.paymentStatus = 'success'
+                AND os.isActive = 1
+                AND os.endDate >= NOW()
+                ORDER BY os.subscriptionId DESC
+                LIMIT 1
+                `,
+                [admin.organizationId]
+            );
+
+            const activeSubscription = subscriptionRows[0];
+
+            subscriptionStatus = activeSubscription ? "ACTIVE" : "INACTIVE";
+            needsSubscription = !activeSubscription;
+
+            await db.query(
+                `
+                UPDATE admins
+                SET subscriptionStatus = ?
+                WHERE adminId = ?
+                `,
+                [subscriptionStatus, admin.adminId]
+            );
+        }
+
         const token = createLoginToken({
             id: admin.adminId,
+            userId: admin.adminId,
             email: admin.email,
             role: admin.role,
+            roleId: admin.roleId || null,
+            organizationId: admin.organizationId || null,
+            isOwner: admin.isOwner || 0,
             type: "admin",
         });
 
@@ -198,36 +362,76 @@ export const login = asyncHandler(async (req, res) => {
             token,
         });
 
-        setAuthCookie(res, token);
+        let permissions = [];
 
-        // admin login
+        if (admin.role === "super_admin") {
+            const [permissionRows] = await db.query(`
+            SELECT permissionKey
+            FROM permissions
+        `);
+
+            permissions = permissionRows.map((item) => item.permissionKey);
+        } else if (admin.roleId && subscriptionStatus === "ACTIVE") {
+            const [permissionRows] = await db.query(
+                `
+                SELECT DISTINCT p.permissionKey
+                FROM role_permissions rp
+                JOIN permissions p 
+                    ON p.permissionId = rp.permissionId
+                JOIN organization_subscriptions os
+                    ON os.organizationId = ?
+                JOIN subscription_plan_permissions pp
+                    ON pp.planId = os.planId
+                    AND pp.permissionId = p.permissionId
+                WHERE rp.roleId = ?
+                AND os.paymentStatus = 'success'
+                AND os.isActive = 1
+                AND os.endDate >= NOW()
+                AND pp.isEnabled = 1
+                `,
+                [admin.organizationId, admin.roleId]
+            );
+
+            permissions = permissionRows.map((item) => item.permissionKey);
+        }
+
         return sendEncrypted(res, 200, {
             success: true,
-            message: "Admin Login Successful",
+            message: needsSubscription
+                ? "Login successful. Subscription required before dashboard access."
+                : "Admin Login Successful",
             data: {
+                token,
                 role: admin.role,
                 type: "admin",
+                needsSubscription,
+                permissions,
                 user: {
+                    userId: admin.adminId,
                     adminId: admin.adminId,
                     adminName: admin.adminName,
                     email: admin.email,
                     role: admin.role,
+                    roleId: admin.roleId || null,
+                    organizationId: admin.organizationId,
+                    isOwner: admin.isOwner,
+                    approvalStatus: admin.approvalStatus,
+                    subscriptionStatus,
                     type: "admin",
+                    permissions,
                 },
             },
         });
     }
 
-    const [userRows] = await db.query(
+    const user = await findOne(
         `SELECT * FROM user_details WHERE email = ? LIMIT 1`,
         [email]
     );
 
-    if (userRows.length === 0) {
+    if (!user) {
         return sendError(res, "User/Admin not registered", 404);
     }
-
-    const user = userRows[0];
 
     if (Number(user.isActive) === 0) {
         return sendError(res, "User account is inactive", 403);
@@ -245,6 +449,10 @@ export const login = asyncHandler(async (req, res) => {
         email: user.email,
         role: "user",
         type: "user",
+
+        organizationId: user.organizationId,
+        isOwner: 0,
+        roleId: null,
     });
 
     await deactivateOldSessions(db, {
@@ -257,8 +465,6 @@ export const login = asyncHandler(async (req, res) => {
         userType: "user",
         token,
     });
-
-    setAuthCookie(res, token);
 
     const ipAddress =
         req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
@@ -286,6 +492,7 @@ export const login = asyncHandler(async (req, res) => {
         success: true,
         message: "User Login Successful",
         data: {
+            token,
             role: "user",
             type: "user",
             user: {
@@ -293,6 +500,7 @@ export const login = asyncHandler(async (req, res) => {
                 firstName: user.firstName,
                 lastName: user.lastName,
                 email: user.email,
+                organizationId: user.organizationId,
                 role: "user",
                 type: "user",
                 isActive: user.isActive,
@@ -302,14 +510,19 @@ export const login = asyncHandler(async (req, res) => {
 });
 
 export const logout = asyncHandler(async (req, res) => {
-    const token = req.cookies?.auth_token;
+    const authHeader = req.headers.authorization;
+
+    const token =
+        authHeader && authHeader.startsWith("Bearer ")
+            ? authHeader.split(" ")[1]
+            : null;
+
     const db = await getDb();
 
-    await endSessionByToken(db, token);
+    if (token) {
+        await endSessionByToken(db, token);
+    }
 
-    clearAuthCookie(res);
-
-    // logout
     return sendEncrypted(res, 200, {
         success: true,
         message: "Logout Successful",
@@ -323,14 +536,25 @@ export const home = asyncHandler(async (req, res) => {
     if (req.userType === "admin") {
         const [rows] = await db.query(
             `
-      SELECT adminId, adminName, email, role, isActive
-      FROM admins
-      WHERE adminId = ?
-      `,
+            SELECT
+                adminId,
+                adminName,
+                email,
+                role,
+                roleId,
+                organizationId,
+                isOwner,
+                approvalStatus,
+                subscriptionStatus,
+                isActive
+            FROM admins
+            WHERE adminId = ?
+            LIMIT 1
+            `,
             [req.userId]
         );
 
-        if (rows.length === 0) {
+        if (!rows.length) {
             return sendError(res, "Admin not registered", 404);
         }
 
@@ -346,16 +570,26 @@ export const home = asyncHandler(async (req, res) => {
 
     const [rows] = await db.query(
         `
-    SELECT 
-      userId, firstName, lastName, email, phoneNo,
-      address, city, state, dob, isActive
-    FROM user_details
-    WHERE userId = ?
-    `,
+        SELECT
+        userId,
+        firstName,
+        lastName,
+        email,
+        phoneNo,
+        address,
+        city,
+        state,
+        dob,
+        organizationId,
+        isActive
+        FROM user_details
+        WHERE userId = ?
+        LIMIT 1
+        `,
         [req.userId]
     );
 
-    if (rows.length === 0) {
+    if (!rows.length) {
         return sendError(res, "User not registered", 404);
     }
 

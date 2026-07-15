@@ -112,6 +112,26 @@ export default function AdminsClient() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
 
+  const getPermissions = () => {
+    try {
+      return JSON.parse(localStorage.getItem("permissions")) || [];
+    } catch {
+      return [];
+    }
+  };
+
+  const hasPermission = (key) => {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+    if (user?.role === "super_admin") return true;
+
+    return getPermissions().includes(key);
+  };
+
+  const canCreateAdmin = hasPermission("admin.manage");
+  const canEditAdmin = hasPermission("admin.manage");
+  const canDeleteAdmin = hasPermission("admin.manage");
+
   const statusMap = {
     active: "1",
     inactive: "0",
@@ -161,11 +181,21 @@ export default function AdminsClient() {
       setRows(formattedData);
       setPage(0);
     } catch (error) {
+      if (error?.response?.status === 403) {
+        router.replace("/admin/dashboard");
+        return;
+      }
+
       console.error(error);
     }
   };
 
   useEffect(() => {
+    if (!hasPermission("admin.view")) {
+      router.replace("/admin/dashboard");
+      return;
+    }
+
     fetchAdmins();
   }, []);
 
@@ -319,7 +349,7 @@ export default function AdminsClient() {
           </Typography>
         </Box>
 
-        {localStorage.getItem("role") === "super_admin" && (
+        {canCreateAdmin && (
           <Button
             onClick={() => router.push("/admin/add-admin")}
             sx={{
@@ -564,7 +594,7 @@ export default function AdminsClient() {
                 </StyledTableCell>
 
                 <StyledTableCell>Admin Name</StyledTableCell>
-                <StyledTableCell>Password</StyledTableCell>
+                {/* <StyledTableCell>Password</StyledTableCell> */}
                 <StyledTableCell>Email</StyledTableCell>
                 <StyledTableCell>Phone</StyledTableCell>
                 <StyledTableCell>Gender</StyledTableCell>
@@ -608,9 +638,9 @@ export default function AdminsClient() {
                     </Box>
                   </StyledTableCell>
 
-                  <StyledTableCell>
+                  {/* <StyledTableCell>
                     {row.Pass ? `${row.Pass.substring(0, 8)}...` : "N/A"}
-                  </StyledTableCell>
+                  </StyledTableCell> */}
 
                   <StyledTableCell>{row.Email}</StyledTableCell>
 
@@ -630,10 +660,10 @@ export default function AdminsClient() {
                   </StyledTableCell>
 
                   <StyledTableCell align="center">
-                    {canManageAdmin(row) && (
+                    {canManageAdmin(row) && canEditAdmin && (
                       <>
                         <IconButton
-                          color="primary"
+                          sx={{ color: "#7e22ce" }}
                           onClick={() => handleEdit(row)}
                         >
                           <EditIcon />

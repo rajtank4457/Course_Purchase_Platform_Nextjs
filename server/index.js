@@ -1,7 +1,6 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import cookieParser from "cookie-parser";
 import path from "path";
 import http from "http";
 import { Server } from "socket.io";
@@ -24,6 +23,15 @@ import { startExamPublishJob } from "./cron/examPublishJob.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import certificateRoutes from "./routes/certificateRoutes.js";
 import activityRoutes from "./routes/activityRoutes.js";
+import attendanceRoutes from "./routes/attendanceRoutes.js";
+import wishlistRoutes from "./routes/wishlistRoutes.js";
+import achievementRoutes from "./routes/achievementRoutes.js";
+import adminApprovalRoutes from "./routes/adminApprovalRoutes.js";
+import roleRoutes from "./routes/roleRoutes.js";
+import subscriptionRoutes from "./routes/subscriptionRoutes.js";
+import facultyRoutes from "./routes/facultyRoutes.js";
+import roleManagementRoutes from "./routes/roleManagementRoutes.js";
+import storageRoutes from "./routes/storageRoutes.js";
 
 dotenv.config();
 
@@ -47,7 +55,7 @@ app.options(
 );
 
 app.use(express.json());
-app.use(cookieParser());
+app.use(express.urlencoded({ extended: true }));
 
 app.use(decryptRequest);
 
@@ -69,6 +77,15 @@ app.use("/exams", examRoutes);
 app.use("/notifications", notificationRoutes);
 app.use("/certificates", certificateRoutes);
 app.use("/activity", activityRoutes);
+app.use("/attendance", attendanceRoutes);
+app.use("/wishlist", wishlistRoutes);
+app.use("/achievements", achievementRoutes);
+app.use("/admin-approvals", adminApprovalRoutes);
+app.use("/roles", roleRoutes);
+app.use("/subscriptions", subscriptionRoutes);
+app.use("/faculty", facultyRoutes);
+app.use("/role-management", roleManagementRoutes);
+app.use("/storage", storageRoutes);
 
 /* Static Uploads */
 

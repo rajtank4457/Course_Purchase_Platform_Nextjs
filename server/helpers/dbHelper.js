@@ -6,8 +6,8 @@ export const getDb = async () => {
 
 export const runQuery = async (sql, params = []) => {
   const db = await connectToDatabase();
-  const [rows] = await db.query(sql, params);
-  return rows;
+  const [result] = await db.query(sql, params);
+  return result;
 };
 
 export const findOne = async (sql, params = []) => {
@@ -17,6 +17,11 @@ export const findOne = async (sql, params = []) => {
 
 export const insertRow = async (table, data) => {
   const keys = Object.keys(data);
+
+  if (keys.length === 0) {
+    throw new Error("insertRow data cannot be empty");
+  }
+
   const values = Object.values(data);
 
   const sql = `
@@ -30,6 +35,11 @@ export const insertRow = async (table, data) => {
 
 export const updateRow = async (table, data, whereSql, whereParams = []) => {
   const keys = Object.keys(data);
+
+  if (keys.length === 0) {
+    throw new Error("updateRow data cannot be empty");
+  }
+
   const values = Object.values(data);
 
   const sql = `

@@ -4,30 +4,34 @@ import { useRouter } from "next/navigation";
 import { apiRequest, libraryApi, cartApi } from "@/lib/apiHelper";
 import { ShoppingCart } from "lucide-react";
 
-export default function CourseActionButton({ course, isInCart, isInLibrary }) {
+export default function CourseActionButton({
+  course,
+  isInCart,
+  isInLibrary,
+  onCartAdded,
+  onLibraryAdded,
+}) {
   const router = useRouter();
 
   const handleAddToLibrary = async () => {
     try {
-      const service = libraryApi.addToLibrary;
-
-      const req = {
+      const res = await apiRequest(libraryApi.addToLibrary, {
         method: "POST",
         data: {
           courseId: course.courseId,
         },
-      };
-
-      const res = await apiRequest(service, req);
+      });
 
       if (!res.success) {
         alert(res.message);
         return;
       }
 
-      window.dispatchEvent(new Event("libraryUpdated"));
+      if (onLibraryAdded) {
+        onLibraryAdded(course);
+      }
 
-      router.refresh();
+      window.dispatchEvent(new Event("libraryUpdated"));
     } catch (err) {
       console.log(err);
       alert("Failed to add course to library");
@@ -36,25 +40,23 @@ export default function CourseActionButton({ course, isInCart, isInLibrary }) {
 
   const handleAddToCart = async () => {
     try {
-      const service = cartApi.addToCart;
-
-      const req = {
+      const res = await apiRequest(cartApi.addToCart, {
         method: "POST",
         data: {
           courseId: course.courseId,
         },
-      };
-
-      const res = await apiRequest(service, req);
+      });
 
       if (!res.success) {
         alert(res.message);
         return;
       }
 
-      window.dispatchEvent(new Event("cartUpdated"));
+      if (onCartAdded) {
+        onCartAdded(course);
+      }
 
-      router.refresh();
+      window.dispatchEvent(new Event("cartUpdated"));
     } catch (err) {
       console.log(err);
       alert("Failed to add course to cart");

@@ -1,5 +1,7 @@
 import express from "express";
 import verifyToken from "../middleware/verifyToken.js";
+import { checkPermission } from "../middleware/checkPermission.js";
+import { checkSubscription } from "../middleware/checkSubscription.js";
 
 import {
   getStudents,
@@ -16,35 +18,104 @@ import {
 
 const router = express.Router();
 
+/*
+|--------------------------------------------------------------------------
+| View Student
+|--------------------------------------------------------------------------
+*/
 
-router.get("/", verifyToken, getStudents);
-
-router.post("/add",
+router.get(
+  "/",
   verifyToken,
-  addStudent);
+  checkPermission("student.view"),
+  getStudents
+);
 
-router.post("/update",
+router.get(
+  "/:userId/details",
   verifyToken,
-  updateStudent);
-
-router.post("/delete",
-  verifyToken,
-  deleteStudent);
-
-router.get("/:userId/details", verifyToken, getStudentDetailsWithCourses);
+  checkPermission("student.view"),
+  getStudentDetailsWithCourses
+);
 
 router.get(
   "/:userId/course/:courseId/progress",
   verifyToken,
+  checkPermission("student.view"),
   getStudentCourseProgress
 );
 
-router.post("/reset-course-progress", verifyToken, resetStudentCourseProgress);
+/*
+|--------------------------------------------------------------------------
+| Create Student
+|--------------------------------------------------------------------------
+*/
 
-router.post("/reset-chapter-progress", verifyToken, resetChapterProgress);
+router.post(
+  "/add",
+  verifyToken,
+  checkSubscription,
+  checkPermission("student.create"),
+  addStudent
+);
 
-router.post("/reset-all-progress", verifyToken, resetStudentAllProgress);
+/*
+|--------------------------------------------------------------------------
+| Update Student
+|--------------------------------------------------------------------------
+*/
 
-router.post("/remove-course", verifyToken, removeStudentCourse);
+router.post(
+  "/update",
+  verifyToken,
+  checkSubscription,
+  checkPermission("student.update"),
+  updateStudent
+);
+
+router.post(
+  "/reset-course-progress",
+  verifyToken,
+  checkSubscription,
+  checkPermission("student.update"),
+  resetStudentCourseProgress
+);
+
+router.post(
+  "/reset-chapter-progress",
+  verifyToken,
+  checkSubscription,
+  checkPermission("student.update"),
+  resetChapterProgress
+);
+
+router.post(
+  "/reset-all-progress",
+  verifyToken,
+  checkSubscription,
+  checkPermission("student.update"),
+  resetStudentAllProgress
+);
+
+router.post(
+  "/remove-course",
+  verifyToken,
+  checkSubscription,
+  checkPermission("student.update"),
+  removeStudentCourse
+);
+
+/*
+|--------------------------------------------------------------------------
+| Delete Student
+|--------------------------------------------------------------------------
+*/
+
+router.post(
+  "/delete",  
+  verifyToken,
+  checkPermission("student.delete"),
+  deleteStudent
+);
 
 export default router;

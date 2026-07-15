@@ -1,20 +1,26 @@
 import { asyncHandler } from "../helpers/asyncHandler.js";
-import { getDb } from "../helpers/dbHelper.js";
+import {
+    runQuery,
+    findOne,
+    insertRow,
+    updateRow,
+} from "../helpers/dbHelper.js";
 import { sendError } from "../helpers/responseHelper.js";
 import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
-const expireOldCoupons = async (db) => {
+const expireOldCoupons = async (organizationId) => {
     const today = new Date().toISOString().split("T")[0];
 
-    await db.query(
+    await runQuery(
         `
     UPDATE coupon_details
     SET isActive = 0
-    WHERE endDate IS NOT NULL
-    AND endDate < ?
-    AND isActive = 1
+    WHERE organizationId = ?
+      AND endDate IS NOT NULL
+      AND endDate < ?
+      AND isActive = 1
     `,
-        [today]
+        [organizationId, today]
     );
 };
 
@@ -29,27 +35,26 @@ export const validateCoupon = asyncHandler(async (req, res) => {
         return sendError(res, "Subtotal is required", 400);
     }
 
-    const db = await getDb();
-    await expireOldCoupons(db);
+    await expireOldCoupons(req.organizationId);
 
     const code = couponCode.trim().toUpperCase();
 
-    const [rows] = await db.query(
+    const coupon = await findOne(
         `
-    SELECT *
-    FROM coupon_details
-    WHERE couponCode = ?
-    AND isActive = 1
-    LIMIT 1
-    `,
-        [code]
+        SELECT *
+        FROM coupon_details
+        WHERE couponCode = ?
+            AND organizationId = ?
+            AND isActive = 1
+        LIMIT 1
+        `,
+        [code, req.organizationId]
     );
 
-    if (rows.length === 0) {
+    if (!coupon) {
         return sendError(res, "Invalid coupon code", 404);
     }
 
-    const coupon = rows[0];
     const today = new Date().toISOString().split("T")[0];
 
     if (coupon.startDate && today < coupon.startDate) {
@@ -108,16 +113,16 @@ export const updateCouponUsage = asyncHandler(async (req, res) => {
         return sendError(res, "Coupon code is required", 400);
     }
 
-    const db = await getDb();
     const code = couponCode.trim().toUpperCase();
 
-    const [result] = await db.query(
+    const result = await runQuery(
         `
-    UPDATE coupon_details
-    SET usedCount = usedCount + 1
-    WHERE couponCode = ?
-    `,
-        [code]
+        UPDATE coupon_details
+        SET usedCount = usedCount + 1
+        WHERE couponCode = ?
+            AND organizationId = ?
+        `,
+        [code, req.organizationId]
     );
 
     if (result.affectedRows === 0) {
@@ -132,28 +137,30 @@ export const updateCouponUsage = asyncHandler(async (req, res) => {
 });
 
 export const getCoupons = asyncHandler(async (req, res) => {
-    const db = await getDb();
+    await expireOldCoupons(req.organizationId);
 
-    await expireOldCoupons(db);
-
-    const [coupons] = await db.query(`
-    SELECT
-      couponId,
-      couponCode,
-      discountType,
-      discountValue,
-      minOrderAmount,
-      maxDiscountAmount,
-      usageLimit,
-      usedCount,
-      isActive,
-      startDate,
-      endDate,
-      createdAt
-    FROM coupon_details
-    ORDER BY couponId DESC
-  `);
-
+    const coupons = await runQuery(
+        `
+        SELECT
+            couponId,
+            organizationId,
+            couponCode,
+            discountType,
+            discountValue,
+            minOrderAmount,
+            maxDiscountAmount,
+            usageLimit,
+            usedCount,
+            isActive,
+            startDate,
+            endDate,
+            createdAt
+        FROM coupon_details
+        WHERE organizationId = ?
+        ORDER BY couponId DESC
+        `,
+        [req.organizationId]
+    );
     return sendEncrypted(res, 200, {
         success: true,
         message: "Coupons fetched successfully",
@@ -210,48 +217,36 @@ export const addCoupon = asyncHandler(async (req, res) => {
         return sendError(res, "End date cannot be before start date", 400);
     }
 
-    const db = await getDb();
-
     const code = couponCode.trim().toUpperCase();
 
-    const [exists] = await db.query(
-        `SELECT couponId FROM coupon_details WHERE couponCode = ? LIMIT 1`,
-        [code]
+    const exists = await findOne(
+        `
+        SELECT couponId
+        FROM coupon_details
+        WHERE couponCode = ?
+            AND organizationId = ?
+        LIMIT 1
+        `,
+        [code, req.organizationId]
     );
 
-    if (exists.length > 0) {
+    if (exists) {
         return sendError(res, "Coupon code already exists", 409);
     }
 
-    await db.query(
-        `
-    INSERT INTO coupon_details
-    (
-      couponCode,
-      discountType,
-      discountValue,
-      minOrderAmount,
-      maxDiscountAmount,
-      usageLimit,
-      usedCount,
-      isActive,
-      startDate,
-      endDate
-    )
-    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
-    `,
-        [
-            code,
-            discountType,
-            Number(discountValue),
-            Number(minOrderAmount || 0),
-            maxDiscountAmount ? Number(maxDiscountAmount) : null,
-            usageLimit ? Number(usageLimit) : null,
-            Number(isActive ?? 1),
-            startDate || null,
-            endDate || null,
-        ]
-    );
+    await insertRow("coupon_details", {
+        organizationId: req.organizationId,
+        couponCode: code,
+        discountType,
+        discountValue: Number(discountValue),
+        minOrderAmount: Number(minOrderAmount || 0),
+        maxDiscountAmount: maxDiscountAmount ? Number(maxDiscountAmount) : null,
+        usageLimit: usageLimit ? Number(usageLimit) : null,
+        usedCount: 0,
+        isActive: Number(isActive ?? 1),
+        startDate: startDate || null,
+        endDate: endDate || null,
+    });
 
     return sendEncrypted(res, 201, {
         success: true,

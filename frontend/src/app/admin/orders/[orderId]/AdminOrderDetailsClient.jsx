@@ -27,8 +27,8 @@ export default function AdminOrderDetailsClient() {
         return;
       }
 
-      setOrder(res.data.order || null);
-      setItems(res.data.items || []);
+      setOrder(res.data?.data?.order || null);
+      setItems(res.data?.data?.items || []);
     } catch (err) {
       console.log(err);
     } finally {

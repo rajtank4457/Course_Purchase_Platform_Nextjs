@@ -171,7 +171,7 @@ export default function CartClient() {
         return;
       }
 
-      const { order_id, orderId, amount, currency, key } = orderRes.data;
+      const { order_id, orderId, amount, currency, key } = orderRes.data?.data;
 
       const options = {
         key,

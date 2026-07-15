@@ -1,5 +1,5 @@
 import { asyncHandler } from "../helpers/asyncHandler.js";
-import { getDb } from "../helpers/dbHelper.js";
+import { runQuery } from "../helpers/dbHelper.js";
 import { sendError } from "../helpers/responseHelper.js";
 import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 import { requireUser } from "../helpers/authHelper.js";
@@ -8,38 +8,44 @@ export const addToLibrary = asyncHandler(async (req, res) => {
   if (!requireUser(req, res)) return;
 
   const { courseId } = req.body;
+  const organizationId = req.organizationId;
+
+  if (!organizationId) {
+    return sendError(res, "Organization not found", 400);
+  }
 
   if (!courseId) {
     return sendError(res, "Course ID is required", 400);
   }
 
-  const db = await getDb();
-
-  const [courseRows] = await db.query(
+  const courseRows = await runQuery(
     `
-    SELECT courseId, courseType
+    SELECT courseId, courseType, organizationId
     FROM course_details
     WHERE courseId = ?
+      AND organizationId = ?
     LIMIT 1
     `,
-    [courseId]
+    [courseId, organizationId]
   );
 
   if (courseRows.length === 0) {
-    return sendError(res, "Course not found", 404);
+    return sendError(res, "Course not found in your organization", 404);
   }
 
   if (Number(courseRows[0].courseType) !== 0) {
     return sendError(res, "Only free courses can be added to library", 400);
   }
 
-  await db.query(
+  await runQuery(
     `
-    INSERT INTO user_library (userId, courseId)
-    VALUES (?, ?)
-    ON DUPLICATE KEY UPDATE addedAt = addedAt
+    INSERT INTO user_library (userId, courseId, organizationId)
+    VALUES (?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+    organizationId = VALUES(organizationId),
+    addedAt = addedAt
     `,
-    [req.userId, courseId]
+    [req.userId, courseId, organizationId]
   );
 
   return sendEncrypted(res, 200, {
@@ -52,9 +58,13 @@ export const addToLibrary = asyncHandler(async (req, res) => {
 export const getLibraryCourses = asyncHandler(async (req, res) => {
   if (!requireUser(req, res)) return;
 
-  const db = await getDb();
+  const organizationId = req.organizationId;
 
-  const [courses] = await db.query(
+  if (!organizationId) {
+    return sendError(res, "Organization not found", 400);
+  }
+
+  const courses = await runQuery(
     `
     SELECT 
       cd.courseId,
@@ -69,9 +79,11 @@ export const getLibraryCourses = asyncHandler(async (req, res) => {
     INNER JOIN course_details cd
       ON cd.courseId = ul.courseId
     WHERE ul.userId = ?
+      AND ul.organizationId = ?
+      AND cd.organizationId = ?
     ORDER BY ul.addedAt DESC
     `,
-    [req.userId]
+    [req.userId, organizationId, organizationId]
   );
 
   if (courses.length === 0) {
@@ -84,7 +96,7 @@ export const getLibraryCourses = asyncHandler(async (req, res) => {
 
   const courseIds = courses.map((course) => course.courseId);
 
-  const [chapters] = await db.query(
+  const chapters = await runQuery(
     `
     SELECT
       chId,

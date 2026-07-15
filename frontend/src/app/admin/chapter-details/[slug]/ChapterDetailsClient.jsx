@@ -105,7 +105,13 @@ export default function ChapterDetailsClient() {
   };
 
   const handleFileOpen = async (file) => {
+    console.log("Selected File:", file);
+    console.log("API_URL:", API_URL);
+    console.log("filePath:", file.filePath);
+
     const fileUrl = `${API_URL}/${file.filePath}`;
+
+    console.log("Generated URL:", fileUrl);
     const ext = file.fileName.split(".").pop().toLowerCase();
 
     setOpenedFiles((prev) =>

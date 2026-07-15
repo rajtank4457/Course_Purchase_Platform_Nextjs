@@ -1,5 +1,5 @@
-import { connectToDatabase } from "../lib/db.js";
 import PDFDocument from "pdfkit";
+import { runQuery } from "../helpers/dbHelper.js";
 import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 
 const getStatusText = (status) => {
@@ -8,31 +8,51 @@ const getStatusText = (status) => {
     return "Payment Pending";
 };
 
+const isSuperAdmin = (req) => req.userRole === "super_admin";
+
+const requireOrganization = (req, res) => {
+    if (!isSuperAdmin(req) && !req.organizationId) {
+        res.status(400).json({
+            success: false,
+            message: "Organization not found",
+        });
+        return false;
+    }
+    return true;
+};
+
 export const getOrders = async (req, res) => {
     try {
-        const db = await connectToDatabase();
 
-        const [rows] = await db.query(
+        if (!req.organizationId) {
+            return res.status(400).json({
+                success: false,
+                message: "Organization not found",
+            });
+        }
+
+        const rows = await runQuery(
             `
-      SELECT 
-        orderId,
-        userId,
-        razorpayOrderId,
-        courseQuantity,
-        subTotal,
-        couponCode,
-        discountAmount,
-        taxableAmount,
-        gst,
-        platformFee,
-        totalPrice,
-        paymentStatus,
-        createdAt
-      FROM orders
-      WHERE userId = ?
-      ORDER BY orderId DESC
-      `,
-            [req.userId]
+            SELECT 
+                orderId,
+                userId,
+                razorpayOrderId,
+                courseQuantity,
+                subTotal,
+                couponCode,
+                discountAmount,
+                taxableAmount,
+                gst,
+                platformFee,
+                totalPrice,
+                paymentStatus,
+                createdAt
+            FROM orders
+            WHERE userId = ?
+            AND organizationId = ?
+            ORDER BY orderId DESC
+            `,
+            [req.userId, req.organizationId]
         );
 
         return sendEncrypted(res, 200, {
@@ -51,25 +71,33 @@ export const getOrders = async (req, res) => {
 
 export const getOrderDetails = async (req, res) => {
     try {
-        const db = await connectToDatabase();
 
-        const [orderRows] = await db.query(
+        if (!req.organizationId) {
+            return res.status(400).json({
+                success: false,
+                message: "Organization not found",
+            });
+        }
+
+        const orderRows = await runQuery(
             `
-      SELECT 
-        o.*,
-        u.firstName,
-        u.lastName,
-        u.email,
-        u.phoneNo,
-        u.address,
-        u.city,
-        u.state
-      FROM orders o
-      LEFT JOIN user_details u
-        ON o.userId = u.userId
-      WHERE o.orderId = ? AND o.userId = ?
-      `,
-            [req.params.orderId, req.userId]
+            SELECT 
+                o.*,
+                u.firstName,
+                u.lastName,
+                u.email,
+                u.phoneNo,
+                u.address,
+                u.city,
+                u.state
+            FROM orders o
+            LEFT JOIN user_details u
+                ON o.userId = u.userId
+            WHERE o.orderId = ?
+            AND o.userId = ?
+            AND o.organizationId = ?
+            `,
+            [req.params.orderId, req.userId, req.organizationId]
         );
 
         if (orderRows.length === 0) {
@@ -82,55 +110,62 @@ export const getOrderDetails = async (req, res) => {
         let order = orderRows[0];
 
         if (order.paymentStatus === "created") {
-            await db.query(
+            await runQuery(
                 `
-        UPDATE orders
-        SET paymentStatus = 'failed'
-        WHERE orderId = ? 
-          AND userId = ? 
-          AND paymentStatus = 'created'
-        `,
-                [req.params.orderId, req.userId]
+                UPDATE orders
+                SET paymentStatus = 'failed'
+                WHERE orderId = ?
+                AND userId = ?
+                AND organizationId = ?
+                AND paymentStatus = 'created'
+                `,
+                [req.params.orderId, req.userId, req.organizationId]
             );
 
-            const [updatedOrderRows] = await db.query(
+            const updatedOrderRows = await runQuery(
                 `
-        SELECT 
-          o.*,
-          u.firstName,
-          u.lastName,
-          u.email,
-          u.phoneNo,
-          u.address,
-          u.city,
-          u.state
-        FROM orders o
-        LEFT JOIN user_details u
-          ON o.userId = u.userId
-        WHERE o.orderId = ? AND o.userId = ?
-        `,
-                [req.params.orderId, req.userId]
+                SELECT 
+                o.*,
+                u.firstName,
+                u.lastName,
+                u.email,
+                u.phoneNo,
+                u.address,
+                u.city,
+                u.state
+                FROM orders o
+                LEFT JOIN user_details u
+                ON o.userId = u.userId
+                WHERE o.orderId = ?
+                AND o.userId = ?
+                AND o.organizationId = ?
+                `,
+                [req.params.orderId, req.userId, req.organizationId]
             );
 
             order = updatedOrderRows[0];
         }
 
-        const [items] = await db.query(
+        const items = await runQuery(
             `
-      SELECT
-        oi.orderItemId,
-        oi.orderId,
-        oi.courseId,
-        oi.courseName,
-        oi.quantity,
-        oi.price,
-        cd.courseDesc
-      FROM order_items oi
-      LEFT JOIN course_details cd
-        ON oi.courseId = cd.courseId
-      WHERE oi.orderId = ?
-      `,
-            [req.params.orderId]
+            SELECT
+                oi.orderItemId,
+                oi.orderId,
+                oi.courseId,
+                oi.courseName,
+                oi.quantity,
+                oi.price,
+                cd.courseDesc
+            FROM order_items oi
+            LEFT JOIN course_details cd
+                ON oi.courseId = cd.courseId
+            WHERE oi.orderId = ?
+            AND oi.organizationId = ?
+            `,
+            [
+                req.params.orderId,
+                req.organizationId,
+            ]
         );
 
         return sendEncrypted(res, 200, {
@@ -152,9 +187,10 @@ export const getOrderDetails = async (req, res) => {
 
 export const getAllOrders = async (req, res) => {
     try {
-        const db = await connectToDatabase();
+        if (!requireOrganization(req, res)) return;
 
-        const [orders] = await db.query(`
+        const orders = await runQuery(
+            `
       SELECT
         orderId,
         userId,
@@ -170,8 +206,11 @@ export const getAllOrders = async (req, res) => {
         paymentStatus,
         createdAt
       FROM orders
+      ${isSuperAdmin(req) ? "" : "WHERE organizationId = ?"}
       ORDER BY orderId DESC
-    `);
+      `,
+            isSuperAdmin(req) ? [] : [req.organizationId]
+        );
 
         return sendEncrypted(res, 200, {
             success: true,
@@ -189,22 +228,26 @@ export const getAllOrders = async (req, res) => {
 
 export const getAdminOrderDetails = async (req, res) => {
     try {
-        const db = await connectToDatabase();
 
-        const [orderRows] = await db.query(
+        if (!requireOrganization(req, res)) return;
+
+        const orderRows = await runQuery(
             `
-      SELECT
-        o.*,
-        u.firstName,
-        u.lastName,
-        u.email,
-        u.phoneNo
-      FROM orders o
-      LEFT JOIN user_details u
-        ON o.userId = u.userId
-      WHERE o.orderId = ?
-      `,
-            [req.params.orderId]
+            SELECT
+                o.*,
+                u.firstName,
+                u.lastName,
+                u.email,
+                u.phoneNo
+            FROM orders o
+            LEFT JOIN user_details u
+                ON o.userId = u.userId
+            WHERE o.orderId = ?
+            ${isSuperAdmin(req) ? "" : "AND o.organizationId = ?"}
+            `,
+            isSuperAdmin(req)
+                ? [req.params.orderId]
+                : [req.params.orderId, req.organizationId]
         );
 
         if (orderRows.length === 0) {
@@ -214,21 +257,21 @@ export const getAdminOrderDetails = async (req, res) => {
             });
         }
 
-        const [items] = await db.query(
+        const items = await runQuery(
             `
-      SELECT
-        oi.orderItemId,
-        oi.orderId,
-        oi.courseId,
-        oi.courseName,
-        oi.quantity,
-        oi.price,
-        cd.courseDesc
-      FROM order_items oi
-      LEFT JOIN course_details cd
-        ON oi.courseId = cd.courseId
-      WHERE oi.orderId = ?
-      `,
+            SELECT
+                oi.orderItemId,
+                oi.orderId,
+                oi.courseId,
+                oi.courseName,
+                oi.quantity,
+                oi.price,
+                cd.courseDesc
+            FROM order_items oi
+            LEFT JOIN course_details cd
+                ON oi.courseId = cd.courseId
+            WHERE oi.orderId = ?
+            `,
             [req.params.orderId]
         );
 
@@ -254,9 +297,14 @@ export const downloadInvoice = async (req, res) => {
         const userId = req.userId;
         const { orderId } = req.params;
 
-        const db = await connectToDatabase();
+        if (!req.organizationId) {
+            return res.status(400).json({
+                success: false,
+                message: "Organization not found",
+            });
+        }
 
-        const [orderRows] = await db.query(
+        const orderRows = await runQuery(
             `
             SELECT
                 o.*,
@@ -270,10 +318,10 @@ export const downloadInvoice = async (req, res) => {
             FROM orders o
             INNER JOIN user_details u ON u.userId = o.userId
             WHERE o.orderId = ?
-            AND o.userId = ?
+            AND o.userId = ? AND o.organizationId = ?
             LIMIT 1
             `,
-            [orderId, userId]
+            [orderId, userId, req.organizationId]
         );
 
         if (orderRows.length === 0) {
@@ -292,7 +340,7 @@ export const downloadInvoice = async (req, res) => {
             });
         }
 
-        const [items] = await db.query(
+        const items = await runQuery(
             `
             SELECT courseName, quantity, price
             FROM order_items
@@ -313,7 +361,6 @@ export const downloadInvoice = async (req, res) => {
 
         const pageWidth = doc.page.width;
 
-        // Header
         doc.rect(0, 0, pageWidth, 100).fill("#581c87");
 
         doc.fillColor("white").fontSize(26).font("Helvetica-Bold");
@@ -323,23 +370,17 @@ export const downloadInvoice = async (req, res) => {
         doc.text("Course Purchase Platform", 350, 35, { align: "right" });
         doc.text("Online Course Invoice", 350, 52, { align: "right" });
 
-        // Invoice info
         doc.fillColor("#1f2937").fontSize(11).font("Helvetica");
 
         doc.text(`Invoice No: INV-${order.orderId}`, 40, 120);
         doc.text(`Order ID: #${order.orderId}`, 40, 138);
-        doc.text(
-            `Purchase Date: ${new Date(order.createdAt).toLocaleString()}`,
-            40,
-            156
-        );
+        doc.text(`Purchase Date: ${new Date(order.createdAt).toLocaleString()}`, 40, 156);
 
         doc.text("Payment Mode: Razorpay", 350, 120, { align: "right" });
         doc.text(`Status: ${getStatusText(order.paymentStatus)}`, 350, 138, {
             align: "right",
         });
 
-        // Buyer box
         doc.roundedRect(40, 185, pageWidth - 80, 75, 8).fill("#f8f5ff");
 
         doc.fillColor("#581c87").fontSize(14).font("Helvetica-Bold");
@@ -349,7 +390,7 @@ export const downloadInvoice = async (req, res) => {
         doc.text(`Name: ${order.firstName || ""} ${order.lastName || ""}`, 55, 222);
         doc.text(`Email: ${order.email || ""}`, 55, 238);
 
-        doc.text(`Phone: ${order.phoneNo || "-"}`, 310, 222);
+        doc.text(`Phone: +91 ${order.phoneNo || "-"}`, 310, 222);
         doc.text(
             `Address: ${order.address || ""}, ${order.city || ""}, ${order.state || ""}`,
             310,
@@ -357,7 +398,6 @@ export const downloadInvoice = async (req, res) => {
             { width: 230 }
         );
 
-        // Table header
         let y = 295;
 
         doc.rect(40, y, pageWidth - 80, 30).fill("#581c87");
@@ -369,7 +409,6 @@ export const downloadInvoice = async (req, res) => {
 
         y += 30;
 
-        // Table rows
         doc.fillColor("#1f2937").font("Helvetica").fontSize(10);
 
         items.forEach((item) => {
@@ -387,7 +426,6 @@ export const downloadInvoice = async (req, res) => {
 
         y += 25;
 
-        // Summary box
         const boxX = pageWidth - 250;
         const boxY = y;
 
@@ -417,7 +455,6 @@ export const downloadInvoice = async (req, res) => {
             align: "right",
         });
 
-        // Footer
         doc.fillColor("#6b7280").fontSize(9).font("Helvetica");
         doc.text(
             "Thank you for your purchase. This is a system-generated invoice.",

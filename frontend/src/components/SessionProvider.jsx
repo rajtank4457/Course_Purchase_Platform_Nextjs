@@ -2,8 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
-import axios from "axios";
-import API_URL from "@/config/api";
+import { apiRequest, authApi } from "@/lib/apiHelper";
 
 export default function SessionProvider({ children }) {
   const pathname = usePathname();
@@ -12,14 +11,17 @@ export default function SessionProvider({ children }) {
     if (pathname !== "/register") return;
 
     const createSession = async () => {
-      try {
-        await axios.post(
-          `${API_URL}/auth/session-token`,
-          { publicToken: "PUBLIC_REGISTER_TOKEN_123" },
-          { withCredentials: true }
-        );
-      } catch (err) {
-        console.log(err.response?.data || err.message);
+      const res = await apiRequest(authApi.createSessionToken, {
+        method: "POST",
+        data: {
+          publicToken: "PUBLIC_REGISTER_TOKEN_123",
+        },
+      });
+
+      const token = res.data?.data?.token;
+
+      if (res.success && token) {
+        localStorage.setItem("guest_token", token);
       }
     };
 

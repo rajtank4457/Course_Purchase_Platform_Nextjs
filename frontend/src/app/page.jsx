@@ -7,7 +7,6 @@ import API_URL from "@/config/api";
 import Link from "next/link";
 import {
   ArrowRight,
-  ShoppingCart,
   Crown,
   BadgeCheck,
   Star,
@@ -25,11 +24,10 @@ export default function Home() {
 
   const fetchCourses = async () => {
     try {
-
       const service = courseApi.getCourses;
       const req = {
         method: "GET",
-      }
+      };
 
       const res = await apiRequest(service, req);
 

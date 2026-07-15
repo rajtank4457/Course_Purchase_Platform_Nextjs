@@ -15,26 +15,28 @@ export default function OrderDetailsClient() {
 
   const fetchOrderDetails = async () => {
     try {
-      const service = orderApi.getOrderDetails(orderId);
-      const req = {
+      const res = await apiRequest(orderApi.getOrderDetails(orderId), {
         method: "GET",
-      };
+      });
 
-      const res = await apiRequest(service, req);
+      console.log(res.data.data);
+      console.log(res.data.data.order);
+      console.log(res.data.data.items);
 
       if (!res.success) {
         console.log(res.message);
         return;
       }
 
-      setOrder(res.data?.order || null);
-      setItems(res.data?.items || []);
+      setOrder(res.data?.data?.order || null);
+      setItems(res.data?.data?.items || []);
     } catch (err) {
       console.log(err);
     } finally {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     if (orderId) fetchOrderDetails();
   }, [orderId]);

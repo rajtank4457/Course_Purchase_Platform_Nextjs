@@ -44,11 +44,14 @@ function Register() {
 
         const res = await apiRequest(service, req);
 
-        if (!res.success) {
+        const token = res.data?.data?.token;
+
+        if (!res.success || !token) {
           setIsSessionReady(false);
           return;
         }
 
+        localStorage.setItem("guest_token", token);
         setIsSessionReady(true);
       } catch (err) {
         console.log(err);
@@ -95,6 +98,13 @@ function Register() {
     e.preventDefault();
 
     try {
+      const guestToken = localStorage.getItem("guest_token");
+
+      if (!guestToken) {
+        alert("Register session missing. Please refresh page.");
+        return;
+      }
+
       let deviceId = localStorage.getItem("device_id");
 
       if (!deviceId) {
@@ -102,25 +112,25 @@ function Register() {
         localStorage.setItem("device_id", deviceId);
       }
 
-      const service = authApi.registerUser;
-
-      const req = {
+      const res = await apiRequest(authApi.registerUser, {
         method: "POST",
         data: {
           ...values,
           deviceId,
         },
-      };
-
-      const res = await apiRequest(service, req);
+        headers: {
+          Authorization: `Bearer ${guestToken}`,
+        },
+      });
 
       if (!res.success) {
         alert(res.message || "Registration failed");
         return;
       }
 
-      alert(res.message || "Registration successful");
+      localStorage.removeItem("guest_token");
 
+      alert(res.message || "Registration successful");
       router.push("/login");
     } catch (err) {
       console.log(err);

@@ -1151,8 +1151,6 @@ export default function CreateExamClient() {
                             setEditingQuestion={setEditingQuestion}
                             fetchExamQuestions={fetchExamQuestions}
                             onSuccess={closeQuestionModal}
-                            addExamQuestion={addExamQuestion}
-                            updateExamQuestion={updateExamQuestion}
                           />
                         )}
 
@@ -1163,8 +1161,6 @@ export default function CreateExamClient() {
                             setEditingQuestion={setEditingQuestion}
                             fetchExamQuestions={fetchExamQuestions}
                             onSuccess={closeQuestionModal}
-                            addExamQuestion={addExamQuestion}
-                            updateExamQuestion={updateExamQuestion}
                           />
                         )}
 
@@ -1176,8 +1172,6 @@ export default function CreateExamClient() {
                               setEditingQuestion={setEditingQuestion}
                               fetchExamQuestions={fetchExamQuestions}
                               onSuccess={closeQuestionModal}
-                              addExamQuestion={addExamQuestion}
-                              updateExamQuestion={updateExamQuestion}
                             />
                           )}
 
@@ -1189,8 +1183,6 @@ export default function CreateExamClient() {
                             setEditingQuestion={setEditingQuestion}
                             fetchExamQuestions={fetchExamQuestions}
                             onSuccess={closeQuestionModal}
-                            addExamQuestion={addExamQuestion}
-                            updateExamQuestion={updateExamQuestion}
                           />
                         )}
 
@@ -1322,8 +1314,6 @@ function MultipleChoiceForm({
   setEditingQuestion,
   fetchExamQuestions,
   onSuccess,
-  addExamQuestion,
-  updateExamQuestion,
 }) {
   const [question, setQuestion] = useState("");
   const [marks, setMarks] = useState(1);
@@ -1446,8 +1436,6 @@ function SingleChoiceForm({
   setEditingQuestion,
   fetchExamQuestions,
   onSuccess,
-  addExamQuestion,
-  updateExamQuestion,
 }) {
   const [question, setQuestion] = useState("");
   const [marks, setMarks] = useState(1);
@@ -1566,8 +1554,6 @@ function EssayForm({
   setEditingQuestion,
   fetchExamQuestions,
   onSuccess,
-  addExamQuestion,
-  updateExamQuestion,
 }) {
   const [question, setQuestion] = useState("");
   const [marks, setMarks] = useState(1);
@@ -1709,8 +1695,6 @@ function BlankQuestionForm({
   setEditingQuestion,
   fetchExamQuestions,
   onSuccess,
-  addExamQuestion,
-  updateExamQuestion,
 }) {
   const [question, setQuestion] = useState("");
   const [marks, setMarks] = useState(1);

@@ -272,7 +272,7 @@ export default function AdminExamsClient() {
           </Typography>
         </Box>
 
-        <Box
+        {/* <Box
           sx={{
             display: "flex",
             justifyContent: "flex-end",
@@ -325,7 +325,7 @@ export default function AdminExamsClient() {
           >
             Create Exam
           </Button>
-        </Box>
+        </Box> */}
       </Box>
 
       <Box
@@ -334,54 +334,75 @@ export default function AdminExamsClient() {
           display: "grid",
           gridTemplateColumns: {
             xs: "1fr",
-            md: "180px 180px 1fr",
+            lg: "170px 170px 1fr",
           },
-          gap: 1.5,
+          gap: 1,
+          alignItems: "stretch",
         }}
       >
-        <StatBox label="Total Exams" value={rows.length} color="#6d28d9" />
+        <StatBox
+          label="Total Exams"
+          value={rows.length}
+          color="#6d28d9"
+          compact
+        />
 
         <StatBox
           label="Published"
           value={rows.filter((x) => x.isPublished === 1).length}
           color="#16a34a"
+          compact
         />
 
         <Paper
           elevation={0}
           sx={{
-            p: 2,
+            p: 1.25,
             borderRadius: 3,
             border: "1px solid",
             borderColor: "divider",
-            bgcolor: "white",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 2,
+            flexWrap: "wrap",
           }}
         >
-          <Typography
-            variant="subtitle2"
-            sx={{ mb: 1.5, fontWeight: 700, color: "text.secondary" }}
-          >
-            Filters
-          </Typography>
-
+          {/* Left Side */}
           <Box
             sx={{
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-              gap: 2,
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+              flexWrap: "wrap",
             }}
           >
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 700,
+                color: "text.secondary",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Filters
+            </Typography>
+
             <TextField
               select
-              label="Exam Type"
+              size="small"
               value={typeFilter}
               onChange={(e) => {
                 setTypeFilter(e.target.value);
                 updateQuery("type", e.target.value);
                 setPage(0);
               }}
-              size="small"
-              fullWidth
+              sx={{
+                minWidth: 160,
+                "& .MuiInputBase-root": {
+                  height: 36,
+                },
+              }}
             >
               <MenuItem value="all">All Types</MenuItem>
               <MenuItem value="course">Course Test</MenuItem>
@@ -390,21 +411,61 @@ export default function AdminExamsClient() {
 
             <TextField
               select
-              label="Publish Status"
+              size="small"
               value={publishFilter}
               onChange={(e) => {
                 setPublishFilter(e.target.value);
                 updateQuery("published", e.target.value);
                 setPage(0);
               }}
-              size="small"
-              fullWidth
+              sx={{
+                minWidth: 160,
+                "& .MuiInputBase-root": {
+                  height: 36,
+                },
+              }}
             >
-              <MenuItem value="all">All</MenuItem>
+              <MenuItem value="all">All Status</MenuItem>
               <MenuItem value="1">Published</MenuItem>
               <MenuItem value="0">Draft</MenuItem>
             </TextField>
           </Box>
+
+          {/* Right Side */}
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => router.push("/admin/exams/pending-check")}
+              sx={{
+                borderColor: "#6d28d9",
+                color: "#6d28d9",
+                textTransform: "none",
+                fontWeight: 600,
+                borderRadius: 2,
+              }}
+            >
+              Pending Checks
+            </Button>
+
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<Plus size={15} />}
+              onClick={() => router.push("/admin/exams/create")}
+              sx={{
+                bgcolor: "#6d28d9",
+                textTransform: "none",
+                fontWeight: 600,
+                borderRadius: 2,
+                "&:hover": {
+                  bgcolor: "#5b21b6",
+                },
+              }}
+            >
+              Create Exam
+            </Button>
+          </Stack>
         </Paper>
       </Box>
 
@@ -563,7 +624,11 @@ export default function AdminExamsClient() {
                         row.examType === "course" ? "primary" : "secondary"
                       }
                       size="small"
-                      sx={{ fontWeight: 800 }}
+                      sx={{
+                        fontWeight: 800,
+                        bgcolor:
+                          row.examType === "course" ? "#7c3aed" : "#cd9beb",
+                      }}
                     />
                   </StyledTableCell>
 
@@ -596,7 +661,7 @@ export default function AdminExamsClient() {
                   <StyledTableCell align="center">
                     {row.isPublished === 0 && (
                       <IconButton
-                        color="primary"
+                        sx={{ color: "#7e22ce" }}
                         onClick={() =>
                           router.push(`/admin/exams/edit/${row.examId}`)
                         }
@@ -636,21 +701,41 @@ export default function AdminExamsClient() {
 
 function StatBox({ label, value, color }) {
   return (
-    <Box
+    <Paper
+      elevation={0}
       sx={{
-        bgcolor: "white",
-        borderRadius: 4,
-        p: 2,
-        border: "1px solid #e5e7eb",
-        boxShadow: "0 8px 24px rgba(15,23,42,0.06)",
+        p: 1.25,
+        borderRadius: 3,
+        border: "1px solid",
+        borderColor: "#e5e7eb",
+        boxShadow: "0 4px 12px rgba(15,23,42,0.04)",
+        minHeight: 72,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
       }}
     >
-      <Typography sx={{ fontSize: 13, color: "#6b7280", fontWeight: 700 }}>
+      <Typography
+        sx={{
+          fontSize: 12,
+          color: "#6b7280",
+          fontWeight: 600,
+        }}
+      >
         {label}
       </Typography>
-      <Typography sx={{ fontSize: 30, fontWeight: 900, color }}>
+
+      <Typography
+        sx={{
+          fontSize: 24,
+          fontWeight: 800,
+          color,
+          lineHeight: 1.1,
+          mt: 0.25,
+        }}
+      >
         {value}
       </Typography>
-    </Box>
+    </Paper>
   );
 }

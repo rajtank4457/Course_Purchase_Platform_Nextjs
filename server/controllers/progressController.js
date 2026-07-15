@@ -1,5 +1,5 @@
 import { asyncHandler } from "../helpers/asyncHandler.js";
-import { getDb } from "../helpers/dbHelper.js";
+import { runQuery } from "../helpers/dbHelper.js";
 import { sendError } from "../helpers/responseHelper.js";
 import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 import { requireUser } from "../helpers/authHelper.js";
@@ -7,15 +7,20 @@ import { requireUser } from "../helpers/authHelper.js";
 export const getAllProgress = asyncHandler(async (req, res) => {
   if (!requireUser(req, res)) return;
 
-  const db = await getDb();
+  if (!req.organizationId) {
+    return sendError(res, "Organization not found", 400);
+  }
 
-  const [rows] = await db.query(
+  const rows = await runQuery(
     `
-    SELECT chId, progress
-    FROM user_chapter_progress
-    WHERE userId = ?
+    SELECT ucp.chId, ucp.progress
+    FROM user_chapter_progress ucp
+    INNER JOIN course_details cd
+      ON cd.courseId = ucp.courseId
+    WHERE ucp.userId = ?
+      AND cd.organizationId = ?
     `,
-    [req.userId]
+    [req.userId, req.organizationId]
   );
 
   const progressMap = {};
@@ -34,22 +39,28 @@ export const getAllProgress = asyncHandler(async (req, res) => {
 export const getChapterProgress = asyncHandler(async (req, res) => {
   if (!requireUser(req, res)) return;
 
+  if (!req.organizationId) {
+    return sendError(res, "Organization not found", 400);
+  }
+
   const { chId } = req.params;
 
   if (!chId) {
     return sendError(res, "Chapter ID is required", 400);
   }
 
-  const db = await getDb();
-
-  const [rows] = await db.query(
+  const rows = await runQuery(
     `
-    SELECT *
-    FROM user_chapter_progress
-    WHERE userId = ? AND chId = ?
+    SELECT ucp.*
+    FROM user_chapter_progress ucp
+    INNER JOIN course_details cd
+      ON cd.courseId = ucp.courseId
+    WHERE ucp.userId = ?
+      AND ucp.chId = ?
+      AND cd.organizationId = ?
     LIMIT 1
     `,
-    [req.userId, chId]
+    [req.userId, chId, req.organizationId]
   );
 
   const progressData = rows[0] || {
@@ -70,6 +81,10 @@ export const getChapterProgress = asyncHandler(async (req, res) => {
 export const saveChapterProgress = asyncHandler(async (req, res) => {
   if (!requireUser(req, res)) return;
 
+  if (!req.organizationId) {
+    return sendError(res, "Organization not found", 400);
+  }
+
   let {
     courseId,
     chId,
@@ -82,6 +97,36 @@ export const saveChapterProgress = asyncHandler(async (req, res) => {
 
   if (!courseId || !chId) {
     return sendError(res, "courseId and chId are required", 400);
+  }
+
+  const courseRows = await runQuery(
+    `
+    SELECT courseId
+    FROM course_details
+    WHERE courseId = ?
+      AND organizationId = ?
+    LIMIT 1
+    `,
+    [courseId, req.organizationId]
+  );
+
+  if (courseRows.length === 0) {
+    return sendError(res, "Course not found in your organization", 404);
+  }
+
+  const chapterRows = await runQuery(
+    `
+    SELECT chId
+    FROM chapter_details
+    WHERE chId = ?
+      AND courseId = ?
+    LIMIT 1
+    `,
+    [chId, courseId]
+  );
+
+  if (chapterRows.length === 0) {
+    return sendError(res, "Chapter not found in this course", 404);
   }
 
   progress = Number(progress || 0);
@@ -98,9 +143,7 @@ export const saveChapterProgress = asyncHandler(async (req, res) => {
     sourceProgress = 25;
   }
 
-  const db = await getDb();
-
-  await db.query(
+  await runQuery(
     `
     INSERT INTO user_chapter_progress
     (

@@ -1,5 +1,7 @@
 import express from "express";
 import verifyToken from "../middleware/verifyToken.js";
+import { checkPermission } from "../middleware/checkPermission.js";
+import { checkSubscription } from "../middleware/checkSubscription.js";
 
 import {
   addExam,
@@ -15,7 +17,8 @@ import {
   getExamQuestionsAdmin,
   updateExamQuestion,
   deleteExamQuestion,
-  getAllExams, deleteExam,
+  getAllExams,
+  deleteExam,
   getExamById,
   updateExam,
   getPendingEssayAttempts,
@@ -26,19 +29,13 @@ import {
 
 const router = express.Router();
 
+/*
+|--------------------------------------------------------------------------
+| Student/User Exam Routes
+|--------------------------------------------------------------------------
+*/
+
 router.get("/available", verifyToken, getAvailableExams);
-
-router.post("/add", verifyToken, addExam);
-
-router.post("/questions/add", verifyToken, addExamQuestion);
-
-router.post(
-  "/access-rules/update",
-  verifyToken,
-  updateExamAccessRules
-);
-
-router.post("/publish", verifyToken, publishExam);
 
 router.get("/:examId/start-info", verifyToken, getExamStartInfo);
 
@@ -48,40 +45,124 @@ router.get("/:examId/attempt", verifyToken, getExamAttemptQuestions);
 
 router.post("/submit", verifyToken, submitExam);
 
+router.get("/result/:attemptId", verifyToken, getExamResult);
+
+/*
+|--------------------------------------------------------------------------
+| Admin/Faculty Exam Routes
+|--------------------------------------------------------------------------
+*/
+
 router.get(
   "/admin/pending-essays",
   verifyToken,
+  checkPermission("exam.check"),
   getPendingEssayAttempts
 );
 
 router.get(
   "/admin/essay-check/:attemptId",
   verifyToken,
+  checkPermission("exam.check"),
   getEssayCheckDetails
 );
 
 router.post(
   "/admin/check-essay",
   verifyToken,
+  checkPermission("exam.check"),
   checkEssayManually
 );
 
-router.get("/result/:attemptId", verifyToken, getExamResult);
+router.post(
+  "/add",
+  verifyToken,
+  checkSubscription,
+  checkPermission("exam.create"),
+  addExam
+);
 
-router.get("/:examId/questions", verifyToken, getExamQuestionsAdmin);
+router.post(
+  "/questions/add",
+  verifyToken,
+  checkSubscription,
+  checkPermission("exam.create"),
+  addExamQuestion
+);
 
-router.get("/all", verifyToken, getAllExams);
+router.post(
+  "/access-rules/update",
+  verifyToken,
+  checkSubscription,
+  checkPermission("exam.update"),
+  updateExamAccessRules
+);
 
-router.post("/update", verifyToken, updateExam);
+router.post(
+  "/publish",
+  verifyToken,
+  checkSubscription,
+  checkPermission("exam.update"),
+  publishExam
+);
 
-router.post("/delete", verifyToken, deleteExam);
+router.get(
+  "/all",
+  verifyToken,
+  checkPermission("exam.view"),
+  getAllExams
+);
 
-router.get("/:examId", verifyToken, getExamById);
+router.get(
+  "/:examId/questions",
+  verifyToken,
+  checkPermission("exam.view"),
+  getExamQuestionsAdmin
+);
 
-router.post("/questions/update", verifyToken, updateExamQuestion);
+router.get(
+  "/:examId",
+  verifyToken,
+  checkPermission("exam.view"),
+  getExamById
+);
 
-router.post("/questions/delete", verifyToken, deleteExamQuestion);
+router.post(
+  "/update",
+  verifyToken,
+  checkSubscription,
+  checkPermission("exam.update"),
+  updateExam
+);
 
-router.post("/questions/sequence/update", verifyToken, updateQuestionSequence);
+router.post(
+  "/delete",
+  verifyToken,
+  checkPermission("exam.delete"),
+  deleteExam
+);
+
+router.post(
+  "/questions/update",
+  verifyToken,
+  checkSubscription,
+  checkPermission("exam.update"),
+  updateExamQuestion
+);
+
+router.post(
+  "/questions/delete",
+  verifyToken,
+  checkPermission("exam.delete"),
+  deleteExamQuestion
+);
+
+router.post(
+  "/questions/sequence/update",
+  verifyToken,
+  checkSubscription,
+  checkPermission("exam.update"),
+  updateQuestionSequence
+);
 
 export default router;

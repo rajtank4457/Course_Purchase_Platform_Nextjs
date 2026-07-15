@@ -1,5 +1,12 @@
 import { safeJSON, stringifyJSON } from "../helpers/jsonHelper.js";
-import { connectToDatabase } from "../lib/db.js";
+import {
+  getDb,
+  runQuery,
+  findOne,
+  insertRow,
+  updateRow,
+  deleteRow,
+} from "../helpers/dbHelper.js";
 import {
   evaluateSingle,
   evaluateMultiple,
@@ -7,6 +14,34 @@ import {
 } from "../helpers/examHelper.js";
 import { notifyUser } from "../helpers/notificationHelper.js";
 import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
+
+const isSuperAdmin = (req) => req.userRole === "super_admin";
+
+const requireOrganization = (req, res) => {
+  if (!isSuperAdmin(req) && !req.organizationId) {
+    res.status(400).json({
+      success: false,
+      message: "Organization not found",
+    });
+    return false;
+  }
+  return true;
+};
+
+const getExamByOrg = async (examId, req) => {
+  return findOne(
+    `
+    SELECT e.*
+    FROM exam_details e
+    INNER JOIN course_details c
+      ON c.courseId = e.courseId
+    WHERE e.examId = ?
+    ${isSuperAdmin(req) ? "" : "AND c.organizationId = ?"}
+    LIMIT 1
+    `,
+    isSuperAdmin(req) ? [examId] : [examId, req.organizationId]
+  );
+};
 
 export const addExam = async (req, res) => {
   try {
@@ -47,87 +82,62 @@ export const addExam = async (req, res) => {
       });
     }
 
-    const db = await connectToDatabase();
+    const organizationId = req.organizationId;
 
-    if (examType === "course") {
-      const [exists] = await db.query(
-        `
-        SELECT examId
-        FROM exam_details
-        WHERE courseId = ?
-        AND examType = 'course'
-        LIMIT 1
-        `,
-        [courseId]
-      );
-
-      if (exists.length > 0) {
-        return res.status(409).json({
-          success: false,
-          message: "Course test already exists for this course",
-        });
-      }
+    if (req.userRole !== "super_admin" && !organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Organization not found",
+      });
     }
 
-    if (examType === "chapter") {
-      const [exists] = await db.query(
-        `
-        SELECT examId
-        FROM exam_details
-        WHERE courseId = ?
-        AND chId = ?
-        AND examType = 'chapter'
-        LIMIT 1
-        `,
-        [courseId, chId]
-      );
-
-      if (exists.length > 0) {
-        return res.status(409).json({
-          success: false,
-          message: "Chapter test already exists for this chapter",
-        });
-      }
-    }
-
-    const [result] = await db.query(
+    const exists = await findOne(
       `
-      INSERT INTO exam_details
-      (
-        courseId,
-        chId,
-        examType,
-        examTitle,
-        examDesc,
-        publishMode,
-        scheduledPublishAt,
-        durationMinutes,
-        totalMarks,
-        passingMarks,
-        maxAttempts,
-        checkingType,
-        isPublished,
-        createdBy
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      SELECT e.examId
+      FROM exam_details e
+      INNER JOIN course_details c
+      ON c.courseId = e.courseId
+      WHERE e.courseId = ?
+        AND e.examType = ?
+        ${examType === "chapter" ? "AND e.chId = ?" : ""}
+        ${req.userRole === "super_admin" ? "" : "AND c.organizationId = ?"}
+      LIMIT 1
       `,
-      [
-        courseId,
-        examType === "chapter" ? chId : null,
-        examType,
-        examTitle,
-        examDesc || null,
-        publishMode || "manual",
-        publishMode === "scheduled" ? scheduledPublishAt : null,
-        durationMinutes || 30,
-        totalMarks || 0,
-        passingMarks || 0,
-        maxAttempts || 1,
-        Number(checkingType || 0),
-        publishMode === "scheduled" ? 0 : Number(isPublished || 0),
-        req.userId,
-      ]
+      examType === "chapter"
+        ? req.userRole === "super_admin"
+          ? [courseId, examType, chId]
+          : [courseId, examType, chId, organizationId]
+        : req.userRole === "super_admin"
+          ? [courseId, examType]
+          : [courseId, examType, organizationId]
     );
+
+    if (exists) {
+      return res.status(409).json({
+        success: false,
+        message:
+          examType === "chapter"
+            ? "Chapter test already exists for this chapter"
+            : "Course test already exists for this course",
+      });
+    }
+
+    const result = await insertRow("exam_details", {
+      courseId,
+      chId: examType === "chapter" ? chId : null,
+      examType,
+      examTitle,
+      examDesc: examDesc || null,
+      publishMode: publishMode || "manual",
+      scheduledPublishAt: publishMode === "scheduled" ? scheduledPublishAt : null,
+      durationMinutes: durationMinutes || 30,
+      totalMarks: totalMarks || 0,
+      passingMarks: passingMarks || 0,
+      maxAttempts: maxAttempts || 1,
+      checkingType: Number(checkingType || 0),
+      isPublished: publishMode === "scheduled" ? 0 : Number(isPublished || 0),
+      createdBy: req.userId,
+    });
 
     return sendEncrypted(res, 201, {
       success: true,
@@ -173,9 +183,9 @@ export const addExamQuestion = async (req, res) => {
       });
     }
 
-    const db = await connectToDatabase();
+    if (!requireOrganization(req, res)) return;
 
-    const [lastSeq] = await db.query(
+    const lastSeq = await findOne(
       `
       SELECT COALESCE(MAX(sequenceNo), 0) + 1 AS nextSeq
       FROM exam_questions
@@ -184,33 +194,26 @@ export const addExamQuestion = async (req, res) => {
       [examId]
     );
 
-    await db.query(
-      `
-      INSERT INTO exam_questions
-      (
-        examId,
-        questionType,
-        questionText,
-        displayText,
-        options,
-        correctAnswers,
-        marks,
-        sequenceNo,
-        isActive
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `,
-      [
-        Number(examId),
-        questionType,
-        questionText,
-        displayText || questionText,
-        stringifyJSON(options),
-        stringifyJSON(correctAnswers),
-        Number(marks) || 1,
-        lastSeq[0].nextSeq,
-      ]
-    );
+    const exam = await getExamByOrg(examId, req);
+
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found in your organization",
+      });
+    }
+
+    await insertRow("exam_questions", {
+      examId: Number(examId),
+      questionType,
+      questionText,
+      displayText: displayText || questionText,
+      options: stringifyJSON(options),
+      correctAnswers: stringifyJSON(correctAnswers),
+      marks: Number(marks) || 1,
+      sequenceNo: lastSeq?.nextSeq || 1,
+      isActive: 1,
+    });
 
     return sendEncrypted(res, 201, {
       success: true,
@@ -253,36 +256,33 @@ export const updateExamAccessRules = async (req, res) => {
       });
     }
 
-    const db = await connectToDatabase();
+    if (!requireOrganization(req, res)) return;
 
-    await db.query(
-      `
-      UPDATE exam_details
-      SET
-        requireCompletion = ?,
-        completionPercent = ?,
-        accessType = ?,
-        checkingType = ?
-      WHERE examId = ?
-      `,
-      [
-        Number(requireCompletion),
-        Number(completionPercent),
+    const exam = await getExamByOrg(examId, req);
+
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found in your organization",
+      });
+    }
+
+    await updateRow(
+      "exam_details",
+      {
+        requireCompletion: Number(requireCompletion),
+        completionPercent: Number(completionPercent),
         accessType,
-        Number(checkingType || 0),
-        examId,
-      ]
-    );
-
-    await db.query(
-      `
-      DELETE FROM exam_access_users
-      WHERE examId = ?
-      `,
+        checkingType: Number(checkingType || 0),
+      },
+      "examId = ?",
       [examId]
     );
 
+    await deleteRow("exam_access_users", "examId = ?", [examId]);
+
     if (accessType === "specific_students" && selectedStudents.length > 0) {
+      const db = await getDb();
       const values = selectedStudents.map((userId) => [examId, userId, 1]);
 
       await db.query(
@@ -330,9 +330,7 @@ export const publishExam = async (req, res) => {
       });
     }
 
-    const db = await connectToDatabase();
-
-    const [questions] = await db.query(
+    const questions = await runQuery(
       `
       SELECT questionId
       FROM exam_questions
@@ -348,70 +346,77 @@ export const publishExam = async (req, res) => {
       });
     }
 
-    const [examRows] = await db.query(
+    if (!requireOrganization(req, res)) return;
+
+    const exam = await findOne(
       `
-      SELECT examId, examTitle, courseId, examType, accessType
-      FROM exam_details
-      WHERE examId = ?
+      SELECT
+        e.examId,
+        e.examTitle,
+        e.courseId,
+        e.examType,
+        e.accessType,
+        c.organizationId
+      FROM exam_details e
+      INNER JOIN course_details c
+      ON c.courseId = e.courseId
+      WHERE e.examId = ?
+      ${isSuperAdmin(req) ? "" : "AND c.organizationId = ?"}
+      LIMIT 1
       `,
-      [examId]
+      isSuperAdmin(req) ? [examId] : [examId, req.organizationId]
     );
 
-    const exam = examRows[0];
-
-    await db.query(
-      `
-      UPDATE exam_details
-      SET isPublished = 1,
-          publishedAt = NOW()
-      WHERE examId = ?
-      `,
-      [examId]
-    );
-
-    let students = [];
-
-    if (exam.accessType === "specific_students") {
-      const [rows] = await db.query(
-        `
-        SELECT DISTINCT eau.userId
-        FROM exam_access_users eau
-        INNER JOIN user_details u ON u.userId = eau.userId
-        WHERE eau.examId = ?
-        AND eau.canAttempt = 1
-        `,
-        [exam.examId]
-      );
-
-      students = rows;
-    } else {
-      const [rows] = await db.query(
-        `
-        SELECT DISTINCT ul.userId
-        FROM user_library ul
-        INNER JOIN user_details u 
-          ON u.userId = ul.userId
-        WHERE ul.courseId = ?
-        AND u.isActive = 1
-        `,
-        [exam.courseId]
-      );
-
-      students = rows;
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found",
+      });
     }
 
+    await updateRow(
+      "exam_details",
+      {
+        isPublished: 1,
+        publishedAt: new Date(),
+      },
+      "examId = ?",
+      [examId]
+    );
+
+    const students =
+      exam.accessType === "specific_students"
+        ? await runQuery(
+          `
+            SELECT DISTINCT eau.userId
+            FROM exam_access_users eau
+            INNER JOIN user_details u ON u.userId = eau.userId
+            WHERE eau.examId = ?
+            AND eau.canAttempt = 1
+            `,
+          [exam.examId]
+        )
+        : await runQuery(
+          `
+            SELECT DISTINCT ul.userId
+            FROM user_library ul
+            INNER JOIN user_details u ON u.userId = ul.userId
+            WHERE ul.courseId = ?
+            AND u.isActive = 1
+            `,
+          [exam.courseId]
+        );
+
+    const db = await getDb();
+
     for (const student of students) {
-      const title =
-        exam.examType === "chapter"
-          ? "New Chapter Test Published"
-          : "New Course Test Published";
-
-      const message = `${exam.examTitle} is now available.`;
-
       await notifyUser(db, io, {
         userId: student.userId,
-        title,
-        message,
+        title:
+          exam.examType === "chapter"
+            ? "New Chapter Test Published"
+            : "New Course Test Published",
+        message: `${exam.examTitle} is now available.`,
         type: "exam",
         examId: exam.examId,
       });
@@ -445,9 +450,8 @@ export const publishExam = async (req, res) => {
 export const getAvailableExams = async (req, res) => {
   try {
     const userId = req.userId;
-    const db = await connectToDatabase();
 
-    const [rows] = await db.query(
+    const rows = await runQuery(
       `
       SELECT
         e.examId,
@@ -586,7 +590,6 @@ export const getAvailableExams = async (req, res) => {
       if (Number(exam.requireCompletion) === 1) {
         if (currentProgress < Number(exam.completionPercent)) {
           canStart = false;
-
           lockReason =
             exam.examType === "course"
               ? "Complete all chapters 100% to unlock course test."
@@ -642,7 +645,6 @@ export const startExam = async (req, res) => {
   try {
     const userId = req.userId;
     const { examId } = req.body;
-    const db = await connectToDatabase();
 
     if (!examId) {
       return res.status(400).json({
@@ -651,7 +653,7 @@ export const startExam = async (req, res) => {
       });
     }
 
-    const [exams] = await db.query(
+    const exams = await runQuery(
       `
       SELECT *
       FROM exam_details
@@ -671,7 +673,7 @@ export const startExam = async (req, res) => {
 
     const exam = exams[0];
 
-    const [library] = await db.query(
+    const library = await runQuery(
       `
       SELECT libraryId
       FROM user_library
@@ -688,7 +690,7 @@ export const startExam = async (req, res) => {
     }
 
     if (exam.accessType === "specific_students") {
-      const [access] = await db.query(
+      const access = await runQuery(
         `
         SELECT accessId
         FROM exam_access_users
@@ -711,7 +713,7 @@ export const startExam = async (req, res) => {
       let currentProgress = 0;
 
       if (exam.examType === "chapter") {
-        const [progress] = await db.query(
+        const progress = await runQuery(
           `
           SELECT progress
           FROM user_chapter_progress
@@ -722,7 +724,7 @@ export const startExam = async (req, res) => {
 
         currentProgress = Number(progress[0]?.progress || 0);
       } else {
-        const [progress] = await db.query(
+        const progress = await runQuery(
           `
           SELECT ROUND(AVG(COALESCE(ucp.progress, 0))) AS courseProgress
           FROM chapter_details ch
@@ -748,18 +750,18 @@ export const startExam = async (req, res) => {
       }
     }
 
-    const [attempts] = await db.query(
+    const attempts = await runQuery(
       `
-        SELECT COUNT(*) AS total
-        FROM exam_attempts
-        WHERE examId = ? 
-        AND userId = ?
-        AND status IN ('PASS', 'FAIL')
-        `,
+      SELECT COUNT(*) AS total
+      FROM exam_attempts
+      WHERE examId = ?
+      AND userId = ?
+      AND status IN ('PASS', 'FAIL', 'PENDING_CHECK')
+      `,
       [examId, userId]
     );
 
-    const attemptCount = Number(attempts[0].total || 0);
+    const attemptCount = Number(attempts[0]?.total || 0);
 
     if (attemptCount >= Number(exam.maxAttempts)) {
       return res.status(403).json({
@@ -768,7 +770,7 @@ export const startExam = async (req, res) => {
       });
     }
 
-    const [result] = await db.query(
+    const result = await runQuery(
       `
       INSERT INTO exam_attempts
       (
@@ -791,6 +793,8 @@ export const startExam = async (req, res) => {
       },
     });
   } catch (err) {
+    console.log("START EXAM ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -803,16 +807,19 @@ export const getExamStartInfo = async (req, res) => {
   try {
     const userId = req.userId;
     const { examId } = req.params;
-    const db = await connectToDatabase();
 
-    const [rows] = await db.query(
+    const rows = await runQuery(
       `
       SELECT
         e.*,
         COUNT(DISTINCT eq.questionId) AS questionCount,
-        COUNT(DISTINCT CASE 
-        WHEN ea.status IN ('PASS', 'FAIL') THEN ea.attemptId 
-        END) AS attemptCount
+        COUNT(
+          DISTINCT CASE
+            WHEN ea.status IN ('PASS', 'FAIL', 'PENDING_CHECK')
+            THEN ea.attemptId
+          END
+        ) AS attemptCount
+
       FROM exam_details e
 
       INNER JOIN user_library ul
@@ -857,6 +864,8 @@ export const getExamStartInfo = async (req, res) => {
       },
     });
   } catch (err) {
+    console.log("GET EXAM START INFO ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -870,9 +879,8 @@ export const getExamAttemptQuestions = async (req, res) => {
     const userId = req.userId;
     const { examId } = req.params;
     const { attemptId } = req.query;
-    const db = await connectToDatabase();
 
-    const [attempt] = await db.query(
+    const attempt = await runQuery(
       `
       SELECT attemptId
       FROM exam_attempts
@@ -891,7 +899,7 @@ export const getExamAttemptQuestions = async (req, res) => {
       });
     }
 
-    const [examRows] = await db.query(
+    const examRows = await runQuery(
       `
       SELECT examId, examTitle, durationMinutes
       FROM exam_details
@@ -900,7 +908,7 @@ export const getExamAttemptQuestions = async (req, res) => {
       [examId]
     );
 
-    const [questions] = await db.query(
+    const questions = await runQuery(
       `
       SELECT
         questionId,
@@ -934,6 +942,8 @@ export const getExamAttemptQuestions = async (req, res) => {
       },
     });
   } catch (err) {
+    console.log("GET EXAM ATTEMPT QUESTIONS ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -946,9 +956,8 @@ export const submitExam = async (req, res) => {
   try {
     const userId = req.userId;
     const { attemptId, answers } = req.body;
-    const db = await connectToDatabase();
 
-    const [attemptRows] = await db.query(
+    const attemptRows = await runQuery(
       `
       SELECT ea.*, e.passingMarks, e.checkingType
       FROM exam_attempts ea
@@ -969,7 +978,7 @@ export const submitExam = async (req, res) => {
 
     const attempt = attemptRows[0];
 
-    const [questions] = await db.query(
+    const questions = await runQuery(
       `
       SELECT questionId, questionType, correctAnswers, marks
       FROM exam_questions
@@ -1027,7 +1036,7 @@ export const submitExam = async (req, res) => {
 
       obtainedMarks += marks;
 
-      await db.query(
+      await runQuery(
         `
         INSERT INTO exam_attempt_answers
         (
@@ -1063,7 +1072,7 @@ export const submitExam = async (req, res) => {
         ? "PASS"
         : "FAIL";
 
-    await db.query(
+    await runQuery(
       `
       UPDATE exam_attempts
       SET
@@ -1099,9 +1108,8 @@ export const getExamResult = async (req, res) => {
   try {
     const userId = req.userId;
     const { attemptId } = req.params;
-    const db = await connectToDatabase();
 
-    const [rows] = await db.query(
+    const rows = await runQuery(
       `
       SELECT
         ea.attemptId,
@@ -1132,13 +1140,13 @@ export const getExamResult = async (req, res) => {
 
     const result = rows[0];
 
-    const [attemptCountRows] = await db.query(
+    const attemptCountRows = await runQuery(
       `
       SELECT COUNT(*) AS usedAttempts
       FROM exam_attempts
       WHERE examId = ?
       AND userId = ?
-      AND status IN ('PASS', 'FAIL')
+      AND status IN ('PASS', 'FAIL', 'PENDING_CHECK')
       `,
       [result.examId, userId]
     );
@@ -1148,7 +1156,7 @@ export const getExamResult = async (req, res) => {
     const remainingAttempts = Math.max(maxAttempts - usedAttempts, 0);
     const canTryAgain = result.status === "FAIL" && remainingAttempts > 0;
 
-    const [questionRows] = await db.query(
+    const questionRows = await runQuery(
       `
       SELECT
         q.questionId,
@@ -1214,10 +1222,27 @@ export const getExamResult = async (req, res) => {
 
 export const getExamQuestionsAdmin = async (req, res) => {
   try {
-    const { examId } = req.params;
-    const db = await connectToDatabase();
+    if (req.userType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can view questions",
+      });
+    }
 
-    const [rows] = await db.query(
+    if (!requireOrganization(req, res)) return;
+
+    const { examId } = req.params;
+
+    const exam = await getExamByOrg(examId, req);
+
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found in your organization",
+      });
+    }
+
+    const rows = await runQuery(
       `
       SELECT *
       FROM exam_questions
@@ -1237,11 +1262,8 @@ export const getExamQuestionsAdmin = async (req, res) => {
       })),
     });
   } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: "Server Error",
-      error: err.message,
-    });
+    console.log("GET EXAM QUESTIONS ADMIN ERROR:", err);
+    return res.status(500).json({ success: false, message: "Server Error", error: err.message });
   }
 };
 
@@ -1257,9 +1279,36 @@ export const updateExamQuestion = async (req, res) => {
       marks = 1,
     } = req.body;
 
-    const db = await connectToDatabase();
+    if (req.userType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can update questions",
+      });
+    }
 
-    await db.query(
+    if (!requireOrganization(req, res)) return;
+
+    const exam = await findOne(
+      `
+      SELECT e.examId
+      FROM exam_questions q
+      INNER JOIN exam_details e ON e.examId = q.examId
+      INNER JOIN course_details c ON c.courseId = e.courseId
+      WHERE q.questionId = ?
+      ${isSuperAdmin(req) ? "" : "AND c.organizationId = ?"}
+      LIMIT 1
+      `,
+      isSuperAdmin(req) ? [questionId] : [questionId, req.organizationId]
+    );
+
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Question not found in your organization",
+      });
+    }
+
+    await runQuery(
       `
       UPDATE exam_questions
       SET
@@ -1288,6 +1337,8 @@ export const updateExamQuestion = async (req, res) => {
       data: {},
     });
   } catch (err) {
+    console.log("UPDATE EXAM QUESTION ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -1299,9 +1350,17 @@ export const updateExamQuestion = async (req, res) => {
 export const deleteExamQuestion = async (req, res) => {
   try {
     const { questionId } = req.body;
-    const db = await connectToDatabase();
 
-    await db.query(
+    if (req.userType !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can delete questions",
+      });
+    }
+
+    if (!requireOrganization(req, res)) return;
+
+    await runQuery(
       `
       UPDATE exam_questions
       SET isActive = 0
@@ -1316,6 +1375,8 @@ export const deleteExamQuestion = async (req, res) => {
       data: {},
     });
   } catch (err) {
+    console.log("DELETE EXAM QUESTION ERROR:", err);
+
     return res.status(500).json({
       success: false,
       message: "Server Error",
@@ -1333,35 +1394,50 @@ export const getAllExams = async (req, res) => {
       });
     }
 
-    const db = await connectToDatabase();
+    const organizationId = req.organizationId;
 
-    const [rows] = await db.query(`
+    if (req.userRole !== "super_admin" && !organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Organization not found",
+      });
+    }
+
+    const rows = await runQuery(
+      `
       SELECT
-        examId,
-        courseId,
-        chId,
-        examType,
-        examTitle,
-        examDesc,
-        publishMode,
-        scheduledPublishAt,
-        publishedAt,
-        durationMinutes,
-        totalMarks,
-        passingMarks,
-        maxAttempts,
-        accessType,
-        checkingType,
-        requireCompletion,
-        completionPercent,
-        isPublished,
-        isActive,
-        createdBy,
-        createdAt,
-        updatedAt
-      FROM exam_details
-      ORDER BY examId DESC
-    `);
+        e.examId,
+        e.courseId,
+        e.chId,
+        e.examType,
+        e.examTitle,
+        e.examDesc,
+        e.publishMode,
+        e.scheduledPublishAt,
+        e.publishedAt,
+        e.durationMinutes,
+        e.totalMarks,
+        e.passingMarks,
+        e.maxAttempts,
+        e.accessType,
+        e.checkingType,
+        e.requireCompletion,
+        e.completionPercent,
+        e.isPublished,
+        e.isActive,
+        e.createdBy,
+        e.createdAt,
+        e.updatedAt,
+        c.courseName,
+        c.organizationId
+      FROM exam_details e
+      INNER JOIN course_details c
+        ON c.courseId = e.courseId
+      ${req.userRole === "super_admin" ? "" : "WHERE c.organizationId = ?"}
+      ORDER BY e.examId DESC
+      `,
+      req.userRole === "super_admin" ? [] : [organizationId]
+    );
 
     return sendEncrypted(res, 200, {
       success: true,
@@ -1387,6 +1463,8 @@ export const deleteExam = async (req, res) => {
       });
     }
 
+    if (!requireOrganization(req, res)) return;
+
     const { examId } = req.body;
 
     if (!examId) {
@@ -1396,21 +1474,17 @@ export const deleteExam = async (req, res) => {
       });
     }
 
-    const db = await connectToDatabase();
+    const exam = await getExamByOrg(examId, req);
 
-    const [exists] = await db.query(
-      `SELECT examId FROM exam_details WHERE examId = ? LIMIT 1`,
-      [examId]
-    );
-
-    if (exists.length === 0) {
+    if (!exam) {
       return res.status(404).json({
         success: false,
-        message: "Exam not found",
+        message: "Exam not found in your organization",
       });
     }
 
-    await db.query(`DELETE FROM exam_details WHERE examId = ?`, [examId]);
+
+    await runQuery(`DELETE FROM exam_details WHERE examId = ?`, [examId]);
 
     return sendEncrypted(res, 200, {
       success: true,
@@ -1419,12 +1493,7 @@ export const deleteExam = async (req, res) => {
     });
   } catch (err) {
     console.log("DELETE EXAM ERROR:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: "Server Error",
-      error: err.message,
-    });
+    return res.status(500).json({ success: false, message: "Server Error", error: err.message });
   }
 };
 
@@ -1461,33 +1530,25 @@ export const updateExam = async (req, res) => {
       });
     }
 
-    const db = await connectToDatabase();
+    if (!requireOrganization(req, res)) return;
 
-    const [publishedRows] = await db.query(
-      `
-      SELECT isPublished
-      FROM exam_details
-      WHERE examId = ?
-      LIMIT 1
-      `,
-      [examId]
-    );
+    const exam = await getExamByOrg(examId, req);
 
-    if (publishedRows.length === 0) {
+    if (!exam) {
       return res.status(404).json({
         success: false,
-        message: "Exam not found",
+        message: "Exam not found in your organization",
       });
     }
 
-    if (Number(publishedRows[0].isPublished) === 1) {
+    if (Number(exam.isPublished) === 1) {
       return res.status(403).json({
         success: false,
         message: "Published exam cannot be edited",
       });
     }
 
-    await db.query(
+    await runQuery(
       `
       UPDATE exam_details
       SET
@@ -1513,9 +1574,7 @@ export const updateExam = async (req, res) => {
         examTitle,
         examDesc || null,
         publishMode || "manual",
-        publishMode === "scheduled"
-          ? scheduledPublishAt
-          : null,
+        publishMode === "scheduled" ? scheduledPublishAt : null,
         durationMinutes || 30,
         totalMarks || 0,
         passingMarks || 0,
@@ -1523,7 +1582,7 @@ export const updateExam = async (req, res) => {
         Number(checkingType || 0),
         isPublished || 0,
         examId,
-      ],
+      ]
     );
 
     return sendEncrypted(res, 200, {
@@ -1553,20 +1612,24 @@ export const getExamById = async (req, res) => {
       });
     }
 
-    const { examId } = req.params;
-    const db = await connectToDatabase();
+    if (!requireOrganization(req, res)) return;
 
-    const [rows] = await db.query(
+    const { examId } = req.params;
+
+    const exam = await findOne(
       `
-      SELECT *
-      FROM exam_details
-      WHERE examId = ?
+      SELECT e.*, c.courseName, c.organizationId
+      FROM exam_details e
+      INNER JOIN course_details c
+        ON c.courseId = e.courseId
+      WHERE e.examId = ?
+      ${isSuperAdmin(req) ? "" : "AND c.organizationId = ?"}
       LIMIT 1
       `,
-      [examId]
+      isSuperAdmin(req) ? [examId] : [examId, req.organizationId]
     );
 
-    if (rows.length === 0) {
+    if (!exam) {
       return res.status(404).json({
         success: false,
         message: "Exam not found",
@@ -1575,14 +1638,11 @@ export const getExamById = async (req, res) => {
 
     return sendEncrypted(res, 200, {
       success: true,
-      data: rows[0],
+      data: exam,
     });
   } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: "Server Error",
-      error: err.message,
-    });
+    console.log("GET EXAM BY ID ERROR:", err);
+    return res.status(500).json({ success: false, message: "Server Error", error: err.message });
   }
 };
 
@@ -1595,9 +1655,10 @@ export const getPendingEssayAttempts = async (req, res) => {
       });
     }
 
-    const db = await connectToDatabase();
+    if (!requireOrganization(req, res)) return;
 
-    const [rows] = await db.query(`
+    const rows = await runQuery(
+      `
       SELECT
         ea.attemptId,
         ea.examId,
@@ -1639,6 +1700,7 @@ export const getPendingEssayAttempts = async (req, res) => {
         AND eq.isActive = 1
 
       WHERE ea.status = 'PENDING_CHECK'
+      ${isSuperAdmin(req) ? "" : "AND c.organizationId = ?"}
       AND ea.submittedAt IS NOT NULL
 
       GROUP BY
@@ -1659,7 +1721,9 @@ export const getPendingEssayAttempts = async (req, res) => {
         u.email
 
       ORDER BY ea.submittedAt DESC
-    `);
+      `,
+      isSuperAdmin(req) ? [] : [req.organizationId]
+    );
 
     return sendEncrypted(res, 200, {
       success: true,
@@ -1686,9 +1750,10 @@ export const getEssayCheckDetails = async (req, res) => {
     }
 
     const { attemptId } = req.params;
-    const db = await connectToDatabase();
 
-    const [attemptRows] = await db.query(
+    if (!requireOrganization(req, res)) return;
+
+    const attemptRows = await runQuery(
       `
       SELECT
         ea.attemptId,
@@ -1712,9 +1777,10 @@ export const getEssayCheckDetails = async (req, res) => {
       INNER JOIN user_details u ON u.userId = ea.userId
       WHERE ea.attemptId = ?
       AND ea.status = 'PENDING_CHECK'
+      ${isSuperAdmin(req) ? "" : "AND c.organizationId = ?"}
       LIMIT 1
       `,
-      [attemptId]
+      isSuperAdmin(req) ? [attemptId] : [attemptId, req.organizationId]
     );
 
     if (attemptRows.length === 0) {
@@ -1726,7 +1792,7 @@ export const getEssayCheckDetails = async (req, res) => {
 
     const attempt = attemptRows[0];
 
-    const [questionRows] = await db.query(
+    const questionRows = await runQuery(
       `
       SELECT
         q.questionId,
@@ -1805,9 +1871,9 @@ export const checkEssayManually = async (req, res) => {
       });
     }
 
-    const db = await connectToDatabase();
+    if (!requireOrganization(req, res)) return;
 
-    const [answerRows] = await db.query(
+    const answerRows = await runQuery(
       `
       SELECT
         aa.answerId,
@@ -1840,7 +1906,7 @@ export const checkEssayManually = async (req, res) => {
       });
     }
 
-    await db.query(
+    await runQuery(
       `
       UPDATE exam_attempt_answers
       SET
@@ -1863,7 +1929,7 @@ export const checkEssayManually = async (req, res) => {
       ]
     );
 
-    const [pendingEssayRows] = await db.query(
+    const pendingEssayRows = await runQuery(
       `
       SELECT COUNT(*) AS pendingCount
       FROM exam_attempt_answers aa
@@ -1891,7 +1957,7 @@ export const checkEssayManually = async (req, res) => {
       });
     }
 
-    const [sumRows] = await db.query(
+    const sumRows = await runQuery(
       `
       SELECT COALESCE(SUM(obtainedMarks), 0) AS finalObtainedMarks
       FROM exam_attempt_answers
@@ -1900,9 +1966,9 @@ export const checkEssayManually = async (req, res) => {
       [attemptId]
     );
 
-    const finalObtainedMarks = Number(sumRows[0].finalObtainedMarks || 0);
+    const finalObtainedMarks = Number(sumRows[0]?.finalObtainedMarks || 0);
 
-    const [attemptRows] = await db.query(
+    const attemptRows = await runQuery(
       `
       SELECT
         ea.userId,
@@ -1911,17 +1977,27 @@ export const checkEssayManually = async (req, res) => {
         e.passingMarks
       FROM exam_attempts ea
       INNER JOIN exam_details e ON e.examId = ea.examId
+      INNER JOIN course_details c ON c.courseId = e.courseId
       WHERE ea.attemptId = ?
+      ${isSuperAdmin(req) ? "" : "AND c.organizationId = ?"}
       LIMIT 1
       `,
-      [attemptId]
+      isSuperAdmin(req) ? [attemptId] : [attemptId, req.organizationId]
     );
 
+    if (attemptRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Attempt not found in your organization",
+      });
+    }
+
     const attempt = attemptRows[0];
+
     const finalStatus =
       finalObtainedMarks >= Number(attempt.passingMarks) ? "PASS" : "FAIL";
 
-    await db.query(
+    await runQuery(
       `
       UPDATE exam_attempts
       SET obtainedMarks = ?, status = ?
@@ -1931,6 +2007,8 @@ export const checkEssayManually = async (req, res) => {
     );
 
     const io = req.app.get("io");
+
+    const db = await getDb();
 
     await notifyUser(db, io, {
       userId: attempt.userId,
@@ -1965,17 +2043,26 @@ export const updateQuestionSequence = async (req, res) => {
   try {
     const { examId, questions } = req.body;
 
-    if (!examId || !Array.isArray(questions)) {
-      return res.status(400).json({
+    if (req.userType !== "admin") {
+      return res.status(403).json({
         success: false,
-        message: "examId and questions are required",
+        message: "Only admin can update question sequence",
       });
     }
 
-    const db = await connectToDatabase();
+    if (!requireOrganization(req, res)) return;
+
+    const exam = await getExamByOrg(examId, req);
+
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found in your organization",
+      });
+    }
 
     for (const item of questions) {
-      await db.query(
+      await runQuery(
         `
         UPDATE exam_questions
         SET sequenceNo = ?
@@ -1997,6 +2084,7 @@ export const updateQuestionSequence = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to update question sequence",
+      error: error.message,
     });
   }
 };

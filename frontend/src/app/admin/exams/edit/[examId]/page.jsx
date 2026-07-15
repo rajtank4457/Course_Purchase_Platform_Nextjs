@@ -1,6 +1,10 @@
-import EditExamClient from './EditExamClient';
-
+import AdminAccessWrapper from "@/components/admin/AdminAccessWrapper";
+import EditExamClient from "./EditExamClient";
 
 export default function EditExamPage() {
-  return <EditExamClient/>; 
+  return (
+    <AdminAccessWrapper permission="exam.update">
+      <EditExamClient />
+    </AdminAccessWrapper>
+  );
 }

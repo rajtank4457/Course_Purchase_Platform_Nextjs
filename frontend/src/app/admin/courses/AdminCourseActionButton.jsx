@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { apiRequest, courseApi } from "@/lib/apiHelper";
 import { Edit, Trash2 } from "lucide-react";
 
-export default function AdminCourseActionButton({ course }) {
+export default function AdminCourseActionButton({ course, onDeleted }) {
   const router = useRouter();
 
   const handleEdit = () => {
@@ -37,7 +37,9 @@ export default function AdminCourseActionButton({ course }) {
 
       alert(res.data?.message || "Course deleted successfully");
 
-      router.refresh();
+      if (onDeleted) {
+        onDeleted();
+      }
     } catch (err) {
       alert("Failed to delete course");
     }
@@ -47,7 +49,7 @@ export default function AdminCourseActionButton({ course }) {
     <div className="flex items-center gap-2">
       <button
         onClick={handleEdit}
-        className="inline-flex items-center gap-2 cursor-pointer rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700"
+        className="inline-flex items-center gap-2 cursor-pointer rounded-xl bg-purple-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-purple-800"
       >
         <Edit className="h-4 w-4" />
         Edit

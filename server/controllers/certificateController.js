@@ -1,8 +1,8 @@
 import PDFDocument from "pdfkit";
 import crypto from "crypto";
-import { connectToDatabase } from "../lib/db.js";
 import path from "path";
 import { fileURLToPath } from "url";
+import { findOne, insertRow } from "../helpers/dbHelper.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,12 +22,17 @@ const generateCertificateNo = (userId, courseId) => {
 export const downloadCourseCertificate = async (req, res) => {
     try {
         const userId = req.userId;
+        const organizationId = req.organizationId;
         const { courseId } = req.params;
 
-        const db = await connectToDatabase();
+        if (!organizationId) {
+            return res.status(400).json({
+                success: false,
+                message: "Organization not found",
+            });
+        }
 
-        // 1. Check course is in user's library
-        const [libraryRows] = await db.query(
+        const student = await findOne(
             `
       SELECT 
         ul.userId,
@@ -36,24 +41,28 @@ export const downloadCourseCertificate = async (req, res) => {
         u.firstName,
         u.lastName
       FROM user_library ul
-      JOIN course_details c ON c.courseId = ul.courseId
-      JOIN user_details u ON u.userId = ul.userId
-      WHERE ul.userId = ? AND ul.courseId = ?
+      JOIN course_details c
+        ON c.courseId = ul.courseId
+       AND c.organizationId = ul.organizationId
+      JOIN user_details u
+        ON u.userId = ul.userId
+       AND u.organizationId = ul.organizationId
+      WHERE ul.userId = ?
+        AND ul.courseId = ?
+        AND ul.organizationId = ?
+      LIMIT 1
       `,
-            [userId, courseId]
+            [userId, courseId, organizationId]
         );
 
-        if (libraryRows.length === 0) {
+        if (!student) {
             return res.status(403).json({
                 success: false,
                 message: "You have not purchased this course",
             });
         }
 
-        const student = libraryRows[0];
-
-        // 2. Check all chapters completed
-        const [progressRows] = await db.query(
+        const progress = await findOne(
             `
       SELECT 
         COUNT(ch.chId) AS totalChapters,
@@ -64,14 +73,17 @@ export const downloadCourseCertificate = async (req, res) => {
         ) AS completedChapters
       FROM chapter_details ch
       LEFT JOIN user_chapter_progress ucp
-        ON ucp.chId = ch.chId AND ucp.userId = ?
+        ON ucp.chId = ch.chId
+       AND ucp.userId = ?
+       AND ucp.organizationId = ch.organizationId
       WHERE ch.courseId = ?
+        AND ch.organizationId = ?
       `,
-            [userId, courseId]
+            [userId, courseId, organizationId]
         );
 
-        const totalChapters = Number(progressRows[0]?.totalChapters || 0);
-        const completedChapters = Number(progressRows[0]?.completedChapters || 0);
+        const totalChapters = Number(progress?.totalChapters || 0);
+        const completedChapters = Number(progress?.completedChapters || 0);
 
         if (totalChapters === 0 || completedChapters < totalChapters) {
             return res.status(403).json({
@@ -80,8 +92,7 @@ export const downloadCourseCertificate = async (req, res) => {
             });
         }
 
-        // 3. Check course test passed
-        const [examRows] = await db.query(
+        const passedExam = await findOne(
             `
       SELECT 
         e.examId,
@@ -90,83 +101,66 @@ export const downloadCourseCertificate = async (req, res) => {
         ea.obtainedMarks,
         ea.totalMarks
       FROM exam_details e
-      JOIN exam_attempts ea ON ea.examId = e.examId
-      WHERE 
-        e.courseId = ?
+      JOIN exam_attempts ea
+        ON ea.examId = e.examId
+       AND ea.organizationId = e.organizationId
+      WHERE e.courseId = ?
+        AND e.organizationId = ?
         AND e.examType = 'course'
         AND ea.userId = ?
         AND ea.status = 'PASS'
       ORDER BY ea.submittedAt DESC
       LIMIT 1
       `,
-            [courseId, userId]
+            [courseId, organizationId, userId]
         );
 
-        if (examRows.length === 0) {
+        if (!passedExam) {
             return res.status(403).json({
                 success: false,
                 message: "Pass the course test to download certificate",
             });
         }
 
-        const passedExam = examRows[0];
-
-        // 4. Check existing certificate
-        const [existingCert] = await db.query(
+        let certificate = await findOne(
             `
-      SELECT * FROM certificates
-      WHERE userId = ? AND courseId = ?
+      SELECT *
+      FROM certificates
+      WHERE userId = ?
+        AND courseId = ?
+        AND organizationId = ?
       LIMIT 1
       `,
-            [userId, courseId]
+            [userId, courseId, organizationId]
         );
 
-        let certificate;
-
-        if (existingCert.length > 0) {
-            certificate = existingCert[0];
-        } else {
+        if (!certificate) {
             const certificateNo = generateCertificateNo(userId, courseId);
-            const studentName = `${student.firstName} ${student.lastName}`;
 
-            await db.query(
-                `
-        INSERT INTO certificates
-        (
-          userId,
-          courseId,
-          examId,
-          attemptId,
-          certificateNo,
-          studentName,
-          courseName
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        `,
-                [
-                    userId,
-                    courseId,
-                    passedExam.examId,
-                    passedExam.attemptId,
-                    certificateNo,
-                    studentName,
-                    student.courseName,
-                ]
-            );
+            await insertRow("certificates", {
+                userId,
+                organizationId,
+                courseId,
+                examId: passedExam.examId,
+                attemptId: passedExam.attemptId,
+                certificateNo,
+                studentName: `${student.firstName} ${student.lastName || ""}`.trim(),
+                courseName: student.courseName,
+            });
 
-            const [newCert] = await db.query(
+            certificate = await findOne(
                 `
-        SELECT * FROM certificates
-        WHERE userId = ? AND courseId = ?
+        SELECT *
+        FROM certificates
+        WHERE userId = ?
+          AND courseId = ?
+          AND organizationId = ?
         LIMIT 1
         `,
-                [userId, courseId]
+                [userId, courseId, organizationId]
             );
-
-            certificate = newCert[0];
         }
 
-        // 5. Generate PDF
         const templatePath = path.join(
             __dirname,
             "../assets/certificates/course-certificate-template.png"
@@ -189,13 +183,11 @@ export const downloadCourseCertificate = async (req, res) => {
         const pageWidth = doc.page.width;
         const pageHeight = doc.page.height;
 
-        // Background certificate template
         doc.image(templatePath, 0, 0, {
             width: pageWidth,
             height: pageHeight,
         });
 
-        // Certificate No
         doc
             .fillColor("#111827")
             .font("Helvetica-Bold")
@@ -205,7 +197,6 @@ export const downloadCourseCertificate = async (req, res) => {
                 align: "center",
             });
 
-        // Student Name
         doc
             .fillColor("#061C3D")
             .font("Times-Italic")
@@ -215,7 +206,6 @@ export const downloadCourseCertificate = async (req, res) => {
                 align: "center",
             });
 
-        // Course Name
         doc
             .fillColor("#061C3D")
             .font("Times-Bold")
@@ -225,7 +215,6 @@ export const downloadCourseCertificate = async (req, res) => {
                 align: "center",
             });
 
-        // Issued Date
         doc
             .fillColor("#111827")
             .font("Helvetica-Bold")
@@ -235,7 +224,6 @@ export const downloadCourseCertificate = async (req, res) => {
                 align: "center",
             });
 
-        // Course Duration / Static Text
         doc
             .fillColor("#111827")
             .font("Helvetica-Bold")
@@ -245,7 +233,6 @@ export const downloadCourseCertificate = async (req, res) => {
                 align: "center",
             });
 
-        // Achievement
         doc
             .fillColor("#111827")
             .font("Helvetica-Bold")

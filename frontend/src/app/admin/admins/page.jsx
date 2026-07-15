@@ -1,5 +1,10 @@
+import AdminAccessWrapper from "@/components/admin/AdminAccessWrapper";
 import AdminsClient from "./AdminsClient";
 
 export default function AdminsPage() {
-  return <AdminsClient />;
+  return (
+    <AdminAccessWrapper permission="admin.view">
+      <AdminsClient />
+    </AdminAccessWrapper>
+  );
 }

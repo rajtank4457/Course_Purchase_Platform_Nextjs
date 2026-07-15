@@ -336,49 +336,20 @@ export default function StudentsClient() {
       }}
     >
       {/* Header */}
-      <Box
-        sx={{
-          mb: 2,
-          display: "flex",
-          flexDirection: { xs: "column", sm: "row" },
-          justifyContent: "space-between",
-          alignItems: { xs: "stretch", sm: "center" },
-          gap: 1.5,
-        }}
-      >
-        <Box>
-          <Typography
-            sx={{
-              fontSize: { xs: 26, sm: 34 },
-              fontWeight: 900,
-              color: "#111827",
-              lineHeight: 1.1,
-            }}
-          >
-            Students
-          </Typography>
-
-          <Typography sx={{ color: "#6b7280", fontSize: 14, mt: 0.5 }}>
-            Manage student details, status, and records
-          </Typography>
-        </Box>
-
-        <Button
-          onClick={() => router.push("/admin/add-student")}
+      <Box sx={{ mb: 2 }}>
+        <Typography
           sx={{
-            borderRadius: 999,
-            px: 3,
-            py: 1,
-            bgcolor: "#6d28d9",
-            color: "white",
-            textTransform: "none",
-            fontWeight: 800,
-            boxShadow: "0 10px 25px rgba(109,40,217,0.25)",
-            "&:hover": { bgcolor: "#5b21b6" },
+            fontSize: { xs: 26, sm: 34 },
+            fontWeight: 900,
+            color: "#111827",
           }}
         >
-          + Add Student
-        </Button>
+          Students
+        </Typography>
+
+        <Typography sx={{ color: "#6b7280", fontSize: 14 }}>
+          Manage student details, status and records
+        </Typography>
       </Box>
 
       {/* Stats + Filters */}
@@ -388,73 +359,106 @@ export default function StudentsClient() {
           display: "grid",
           gridTemplateColumns: {
             xs: "1fr",
-            md: "220px 220px 1fr 1fr",
+            lg: "170px 170px 1fr",
           },
-          gap: 1.5,
+          gap: 1,
+          alignItems: "stretch",
         }}
       >
-        <Box
+        <StatBox label="Total Students" value={rows.length} color="#6d28d9" />
+
+        <StatBox
+          label="Active"
+          value={rows.filter((x) => x.isActive === 1).length}
+          color="#16a34a"
+        />
+
+        <Paper
+          elevation={0}
           sx={{
-            bgcolor: "white",
-            borderRadius: 4,
-            p: 2,
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 8px 24px rgba(15,23,42,0.06)",
+            p: 1.25,
+            borderRadius: 3,
+            border: "1px solid",
+            borderColor: "divider",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 2,
+            flexWrap: "wrap",
           }}
         >
-          <Typography sx={{ fontSize: 13, color: "#6b7280", fontWeight: 700 }}>
-            Total Students
-          </Typography>
-          <Typography sx={{ fontSize: 30, fontWeight: 900, color: "#6d28d9" }}>
-            {rows.length}
-          </Typography>
-        </Box>
+          {/* Left */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+              flexWrap: "wrap",
+            }}
+          >
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 700,
+                color: "text.secondary",
+              }}
+            >
+              Filters
+            </Typography>
 
-        <Box
-          sx={{
-            bgcolor: "white",
-            borderRadius: 4,
-            p: 2,
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 8px 24px rgba(15,23,42,0.06)",
-          }}
-        >
-          <Typography sx={{ fontSize: 13, color: "#6b7280", fontWeight: 700 }}>
-            Active
-          </Typography>
-          <Typography sx={{ fontSize: 30, fontWeight: 900, color: "#16a34a" }}>
-            {rows.filter((item) => item.isActive === 1).length}
-          </Typography>
-        </Box>
+            <TextField
+              select
+              size="small"
+              value={statusFilter}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              sx={{
+                minWidth: 170,
+                "& .MuiInputBase-root": {
+                  height: 36,
+                },
+              }}
+            >
+              <MenuItem value="all">All Students</MenuItem>
+              <MenuItem value="active">Active</MenuItem>
+              <MenuItem value="inactive">Inactive</MenuItem>
+            </TextField>
 
-        <TextField
-          select
-          label="Status"
-          value={statusFilter}
-          onChange={(e) => handleStatusChange(e.target.value)}
-          size="small"
-          fullWidth
-          sx={{ bgcolor: "white", borderRadius: 3 }}
-        >
-          <MenuItem value="all">All Students</MenuItem>
-          <MenuItem value="active">Active</MenuItem>
-          <MenuItem value="inactive">Inactive</MenuItem>
-        </TextField>
+            <TextField
+              select
+              size="small"
+              value={sortBy}
+              onChange={(e) => handleSortByChange(e.target.value)}
+              sx={{
+                minWidth: 170,
+                "& .MuiInputBase-root": {
+                  height: 36,
+                },
+              }}
+            >
+              <MenuItem value="id">Student ID</MenuItem>
+              <MenuItem value="name">Student Name</MenuItem>
+              <MenuItem value="dob">DOB</MenuItem>
+            </TextField>
+          </Box>
 
-        <TextField
-          select
-          label="Sort By"
-          value={sortBy}
-          onChange={(e) => handleSortByChange(e.target.value)}
-          size="small"
-          fullWidth
-          sx={{ bgcolor: "white", borderRadius: 3 }}
-        >
-          <MenuItem value="id">None</MenuItem>
-          {isMobile && <MenuItem value="id">Student ID</MenuItem>}
-          <MenuItem value="name">Student Name</MenuItem>
-          <MenuItem value="dob">DOB</MenuItem>
-        </TextField>
+          {/* Right */}
+          <Button
+            variant="contained"
+            onClick={() => router.push("/admin/add-student")}
+            sx={{
+              bgcolor: "#6d28d9",
+              textTransform: "none",
+              fontWeight: 600,
+              borderRadius: 2,
+              px: 2,
+              "&:hover": {
+                bgcolor: "#5b21b6",
+              },
+            }}
+          >
+            + Add Student
+          </Button>
+        </Paper>
       </Box>
 
       {/* Mobile Cards */}
@@ -668,7 +672,10 @@ export default function StudentsClient() {
                   </StyledTableCell>
 
                   <StyledTableCell align="center">
-                    <IconButton color="primary" onClick={() => handleEdit(row)}>
+                    <IconButton
+                      sx={{ color: "#7e22ce" }}
+                      onClick={() => handleEdit(row)}
+                    >
                       <EditIcon />
                     </IconButton>
                     <IconButton color="error" onClick={() => handleDelete(row)}>
@@ -807,5 +814,46 @@ export default function StudentsClient() {
         </DialogActions>
       </Dialog>
     </Box>
+  );
+}
+
+function StatBox({ label, value, color }) {
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: 1.25,
+        borderRadius: 3,
+        border: "1px solid",
+        borderColor: "#e5e7eb",
+        boxShadow: "0 4px 12px rgba(15,23,42,0.04)",
+        minHeight: 72,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+      }}
+    >
+      <Typography
+        sx={{
+          fontSize: 12,
+          color: "#6b7280",
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </Typography>
+
+      <Typography
+        sx={{
+          fontSize: 24,
+          fontWeight: 800,
+          color,
+          lineHeight: 1.1,
+          mt: 0.25,
+        }}
+      >
+        {value}
+      </Typography>
+    </Paper>
   );
 }

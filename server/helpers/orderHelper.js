@@ -1,17 +1,25 @@
-export const addOrderCoursesToLibrary = async (db, userId, orderId) => {
-  const [items] = await db.query(
+import { runQuery } from "./dbHelper.js";
+
+export const addOrderCoursesToLibrary = async (
+  userId,
+  orderId,
+  organizationId
+) => {
+  const items = await runQuery(
     `
     SELECT courseId
     FROM order_items
     WHERE orderId = ?
+      AND organizationId = ?
     `,
-    [orderId]
+    [orderId, organizationId]
   );
 
   for (const item of items) {
-    await db.query(
+    await runQuery(
       `
-      INSERT INTO user_library (userId, courseId)
+      INSERT INTO user_library
+      (userId, courseId)
       VALUES (?, ?)
       ON DUPLICATE KEY UPDATE addedAt = addedAt
       `,
@@ -20,31 +28,50 @@ export const addOrderCoursesToLibrary = async (db, userId, orderId) => {
   }
 };
 
-export const clearUserCart = async (db, userId) => {
-  await db.query(
+export const clearUserCart = async (
+  userId,
+  organizationId
+) => {
+  await runQuery(
     `
     DELETE FROM cart
     WHERE userId = ?
+      AND organizationId = ?
     `,
-    [userId]
+    [userId, organizationId]
   );
 };
 
-export const createOrderItems = async (db, orderId, cartItems = []) => {
+export const createOrderItems = async (
+  orderId,
+  organizationId,
+  cartItems = []
+) => {
   for (const item of cartItems) {
-    await db.query(
+    await runQuery(
       `
       INSERT INTO order_items
       (
         orderId,
+        organizationId,
         courseId,
         courseName,
         quantity,
         price
       )
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?)
       `,
-      [orderId, item.courseId, item.courseName, 1, item.coursePrice]
+      [
+        orderId,
+        organizationId,
+        item.courseId,
+        item.courseName,
+        1,
+        item.coursePrice,
+      ]
     );
+
+    console.log("Organization:", organizationId);
+    console.log("Items:", cartItems);
   }
 };

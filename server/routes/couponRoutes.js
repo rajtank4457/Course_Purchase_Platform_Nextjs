@@ -1,5 +1,7 @@
 import express from "express";
 import verifyToken from "../middleware/verifyToken.js";
+import { checkPermission } from "../middleware/checkPermission.js";
+import { checkSubscription } from "../middleware/checkSubscription.js";
 
 import {
   getCoupons,
@@ -10,12 +12,24 @@ import {
 
 const router = express.Router();
 
-router.get("/", verifyToken, getCoupons);
+// Admin/Faculty
+router.get(
+  "/",
+  verifyToken,
+  checkPermission("coupon.view"),
+  getCoupons
+);
 
-router.post("/add", verifyToken, addCoupon);
+router.post(
+  "/add",
+  verifyToken,
+  checkSubscription,
+  checkPermission("coupon.create"),
+  addCoupon
+);
 
+// User side
 router.post("/validate", verifyToken, validateCoupon);
-
 router.post("/usage", verifyToken, updateCouponUsage);
 
 export default router;

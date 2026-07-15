@@ -1,7 +1,7 @@
 import razorpay from "../config/razorpay.js";
 import crypto from "crypto";
 import { asyncHandler } from "../helpers/asyncHandler.js";
-import { getDb } from "../helpers/dbHelper.js";
+import { runQuery } from "../helpers/dbHelper.js";
 import { sendError } from "../helpers/responseHelper.js";
 import { sendEncrypted } from "../middleware/cryptoMiddleware.js";
 import { requireUser } from "../helpers/authHelper.js";
@@ -13,6 +13,12 @@ import {
 
 export const createOrder = asyncHandler(async (req, res) => {
     if (!requireUser(req, res)) return;
+
+    const organizationId = req.organizationId;
+
+    if (!organizationId) {
+        return sendError(res, "Organization not found", 400);
+    }
 
     const {
         courseQuantity,
@@ -29,9 +35,7 @@ export const createOrder = asyncHandler(async (req, res) => {
         return sendError(res, "Invalid order amount", 400);
     }
 
-    const db = await getDb();
-
-    const [cartItems] = await db.query(
+    const cartItems = await runQuery(
         `
     SELECT 
       c.courseId,
@@ -40,8 +44,10 @@ export const createOrder = asyncHandler(async (req, res) => {
     FROM cart c
     JOIN course_details cd ON c.courseId = cd.courseId
     WHERE c.userId = ?
+      AND c.organizationId = ?
+      AND cd.organizationId = ?
     `,
-        [req.userId]
+        [req.userId, organizationId, organizationId]
     );
 
     if (cartItems.length === 0) {
@@ -54,11 +60,12 @@ export const createOrder = asyncHandler(async (req, res) => {
         receipt: `receipt_${Date.now()}`,
     });
 
-    const [orderResult] = await db.query(
+    const orderResult = await runQuery(
         `
     INSERT INTO orders
     (
       userId,
+      organizationId,
       razorpayOrderId,
       courseQuantity,
       subTotal,
@@ -70,10 +77,11 @@ export const createOrder = asyncHandler(async (req, res) => {
       totalPrice,
       paymentStatus
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
         [
             req.userId,
+            organizationId,
             razorpayOrder.id,
             courseQuantity,
             subTotal,
@@ -89,7 +97,11 @@ export const createOrder = asyncHandler(async (req, res) => {
 
     const orderId = orderResult.insertId;
 
-    await createOrderItems(db, orderId, cartItems);
+    await createOrderItems(
+        orderId,
+        organizationId,
+        cartItems
+    );
 
     return sendEncrypted(res, 200, {
         success: true,
@@ -107,6 +119,12 @@ export const createOrder = asyncHandler(async (req, res) => {
 export const verifyCartPayment = asyncHandler(async (req, res) => {
     if (!requireUser(req, res)) return;
 
+    const organizationId = req.organizationId;
+
+    if (!organizationId) {
+        return sendError(res, "Organization not found", 400);
+    }
+
     const { razorpay_payment_id, razorpay_order_id, razorpay_signature } =
         req.body;
 
@@ -114,34 +132,36 @@ export const verifyCartPayment = asyncHandler(async (req, res) => {
         return sendError(res, "Payment details are required", 400);
     }
 
-    const db = await getDb();
-
     const generatedSignature = crypto
         .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
         .update(`${razorpay_order_id}|${razorpay_payment_id}`)
         .digest("hex");
 
     if (generatedSignature !== razorpay_signature) {
-        await db.query(
+        await runQuery(
             `
       UPDATE orders 
       SET paymentStatus = 'failed'
-      WHERE razorpayOrderId = ? AND userId = ?
+      WHERE razorpayOrderId = ?
+        AND userId = ?
+        AND organizationId = ?
       `,
-            [razorpay_order_id, req.userId]
+            [razorpay_order_id, req.userId, organizationId]
         );
 
         return sendError(res, "Invalid payment signature", 400);
     }
 
-    const [orderRows] = await db.query(
+    const orderRows = await runQuery(
         `
     SELECT orderId
     FROM orders
-    WHERE razorpayOrderId = ? AND userId = ?
+    WHERE razorpayOrderId = ?
+      AND userId = ?
+      AND organizationId = ?
     LIMIT 1
     `,
-        [razorpay_order_id, req.userId]
+        [razorpay_order_id, req.userId, organizationId]
     );
 
     if (orderRows.length === 0) {
@@ -150,17 +170,19 @@ export const verifyCartPayment = asyncHandler(async (req, res) => {
 
     const orderId = orderRows[0].orderId;
 
-    await db.query(
+    await runQuery(
         `
     UPDATE orders
     SET paymentStatus = 'paid'
     WHERE orderId = ?
+      AND userId = ?
+      AND organizationId = ?
     `,
-        [orderId]
+        [orderId, req.userId, organizationId]
     );
 
-    await addOrderCoursesToLibrary(db, req.userId, orderId);
-    await clearUserCart(db, req.userId);
+    await addOrderCoursesToLibrary(req.userId, orderId, organizationId);
+    await clearUserCart(req.userId, organizationId);
 
     return sendEncrypted(res, 200, {
         success: true,
@@ -174,21 +196,27 @@ export const verifyCartPayment = asyncHandler(async (req, res) => {
 export const paymentFailed = asyncHandler(async (req, res) => {
     if (!requireUser(req, res)) return;
 
+    const organizationId = req.organizationId;
+
+    if (!organizationId) {
+        return sendError(res, "Organization not found", 400);
+    }
+
     const { razorpay_order_id, error } = req.body;
 
     if (!razorpay_order_id) {
         return sendError(res, "Razorpay order ID is required", 400);
     }
 
-    const db = await getDb();
-
-    await db.query(
+    await runQuery(
         `
     UPDATE orders
     SET paymentStatus = 'failed'
-    WHERE razorpayOrderId = ? AND userId = ?
+    WHERE razorpayOrderId = ?
+      AND userId = ?
+      AND organizationId = ?
     `,
-        [razorpay_order_id, req.userId]
+        [razorpay_order_id, req.userId, organizationId]
     );
 
     return sendEncrypted(res, 200, {

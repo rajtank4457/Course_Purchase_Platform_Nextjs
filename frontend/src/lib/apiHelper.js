@@ -4,6 +4,7 @@ import { encryptData, decryptData } from "./cryptoHelper";
 const authApi = {
   createSessionToken: "/auth/session-token",
   registerUser: "/auth/register",
+  adminRegister: "/auth/admin-register",
   loginUser: "/auth/login",
   logoutUser: "/auth/logout",
   getHomeUser: "/auth/home",
@@ -133,6 +134,83 @@ const certificateApi = {
 const activityApi = {
   getStudents: "/activity/students",
   getStudentDashboard: (userId) => `/activity/dashboard/${userId}`,
+  trackPage: "/activity/track-page",
+};
+
+const attendanceApi = {
+  markLogin: "/attendance/login",
+  markLogout: "/attendance/logout",
+  getMyAttendance: "/attendance/my",
+  getMyStudyTime: "/attendance/study-time",
+
+  getAdminAttendance: "/attendance/admin",
+  updateAttendanceStatus: "/attendance/admin/update-status",
+  createManualAttendance: "/attendance/admin/manual",
+};
+
+const wishlistApi = {
+  getWishlist: "/wishlist",
+  getWishlistCount: "/wishlist/count",
+  addToWishlist: "/wishlist/add",
+  removeFromWishlist: "/wishlist/remove",
+};
+
+const achievementApi = {
+  getAchievements: "/achievements",
+};
+
+const adminApprovalApi = {
+  pending: "/admin-approvals/pending",
+  approve: (adminId) => `/admin-approvals/approve/${adminId}`,
+  reject: (adminId) => `/admin-approvals/reject/${adminId}`,
+};
+
+const roleApi = {
+  getRoles: "/roles",
+  addRole: "/roles/add",
+  updateRole: (roleId) => `/roles/update/${roleId}`,
+  getPermissions: "/roles/permissions",
+  assignPermissions: (roleId) => `/roles/assign-permissions/${roleId}`,
+  assignRole: (adminId) => `/roles/assign-role/${adminId}`,
+};
+
+const organizationApi = {
+  getActiveOrganizations: "/role-management/organizations",
+};
+
+const roleManagementApi = {
+  getRoles: (organizationId) =>
+    `/role-management/roles/${organizationId}`,
+
+  getRolePermissions: (roleId) =>
+    `/role-management/permissions/${roleId}`,
+
+  updateRolePermissions: (roleId) =>
+    `/role-management/permissions/${roleId}`,
+};
+
+const subscriptionApi = {
+  getPlans: "/subscriptions/plans",
+  addPlan: "/subscriptions/plans/add",
+  updatePlan: (planId) => `/subscriptions/plans/update/${planId}`,
+
+  createOrder: "/subscriptions/create-order",
+  verifyPayment: "/subscriptions/verify-payment",
+  mySubscription: "/subscriptions/my-subscription",
+
+  organizationSubscription: (organizationId) =>
+    `/subscriptions/organization/${organizationId}`,
+};
+
+const facultyApi = {
+  getFaculty: "/faculty",
+  addFaculty: "/faculty/add",
+  updateFaculty: "/faculty/update",
+  deleteFaculty: "/faculty/delete",
+};
+
+const storageApi = {
+  getStorage: "/storage",
 };
 
 export const apiRequest = async (
@@ -149,21 +227,33 @@ export const apiRequest = async (
     const isFormData = data instanceof FormData;
     const isBlob = responseType === "blob";
 
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("auth_token")
+        : null;
+
     const config = {
       method,
       url,
       params,
-      headers,
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers,
+      },
       responseType,
     };
 
     if (data !== undefined && data !== null) {
-      config.data = isFormData
-        ? data
-        : {
+      if (isFormData) {
+        config.data = data;
+      } else {
+        const encryptedPayload = encryptData(data);
+
+        config.data = {
           encrypted: true,
-          payload: encryptData(data),
+          payload: encryptedPayload.data,
         };
+      }
     }
 
     const response = await axiosClient(config);
@@ -210,4 +300,14 @@ export {
   studentApi,
   certificateApi,
   activityApi,
+  attendanceApi,
+  wishlistApi,
+  achievementApi,
+  adminApprovalApi,
+  roleApi,
+  organizationApi,
+  roleManagementApi,
+  subscriptionApi,
+  facultyApi,
+  storageApi,
 };
