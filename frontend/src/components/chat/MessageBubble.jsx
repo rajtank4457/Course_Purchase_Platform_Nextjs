@@ -1,13 +1,14 @@
 "use client";
 
-import { Box, Typography } from "@mui/material";
+import { Box, Typography, IconButton } from "@mui/material";
 
 import DoneAllRoundedIcon from "@mui/icons-material/DoneAllRounded";
+import ReplyRoundedIcon from "@mui/icons-material/ReplyRounded";
 
 import { useChat } from "@/context/ChatContext";
 
 export default function MessageBubble({ message }) {
-  const { selectedConversation } = useChat();
+  const { selectedConversation, setReplyMessage } = useChat();
 
   const isMine = message.senderId !== selectedConversation.userId;
 
@@ -27,6 +28,12 @@ export default function MessageBubble({ message }) {
           boxShadow: "0 1px 3px rgba(0,0,0,.08)",
         }}
       >
+        <Box display="flex" justifyContent="flex-end" mb={0.5}>
+          <IconButton size="small" onClick={() => setReplyMessage(message)}>
+            <ReplyRoundedIcon fontSize="small" />
+          </IconButton>
+        </Box>
+
         {message.fileUrl &&
           (message.messageType === "file" ? (
             message.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (

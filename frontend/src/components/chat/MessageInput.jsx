@@ -75,6 +75,10 @@ export default function MessageInput() {
       formData.append("file", selectedFile);
     }
 
+    if (replyMessage) {
+      formData.append("replyToMessageId", replyMessage.messageId || "");
+    }
+
     const res = await apiRequest(chatApi.sendMessage, {
       method: "POST",
       data: formData,
@@ -84,7 +88,7 @@ export default function MessageInput() {
       setMessage("");
 
       setSelectedFile(null);
-
+      setReplyMessage(null);
       fileInputRef.current.value = "";
     }
   };
@@ -119,6 +123,12 @@ export default function MessageInput() {
         p: 1.5,
       }}
     >
+      {replyMessage && (
+        <ReplyPreview
+          message={replyMessage}
+          onClose={() => setReplyMessage(null)}
+        />
+      )}
       {selectedFile && (
         <Box mb={1}>
           <FilePreview
@@ -153,8 +163,6 @@ export default function MessageInput() {
         <IconButton onClick={() => fileInputRef.current?.click()}>
           <AttachFileRoundedIcon />
         </IconButton>
-
-        <ReplyPreview />
 
         <TextField
           fullWidth

@@ -413,25 +413,43 @@ export const getMessages = asyncHandler(async (req, res) => {
     const [messages] = await db.query(
         `
         SELECT
-            messageId,
-            conversationId,
-            senderId,
-            senderRole,
-            receiverId,
-            receiverRole,
-            message,
-            messageType,
-            fileUrl,
-            fileName,
-            fileSize,
-            isSeen,
-            seenAt,
-            createdAt
-        FROM chat_messages
+
+            m.messageId,
+            m.conversationId,
+            m.senderId,
+            m.senderRole,
+            m.receiverId,
+            m.receiverRole,
+            m.replyToMessageId,
+
+            m.message,
+            m.messageType,
+
+            m.fileUrl,
+            m.fileName,
+            m.fileSize,
+
+            m.isSeen,
+            m.seenAt,
+            m.createdAt,
+
+            r.message AS replyMessage,
+            r.senderId AS replySenderId,
+            r.senderRole AS replySenderRole,
+            r.messageType AS replyMessageType,
+            r.fileName AS replyFileName,
+            r.fileUrl AS replyFileUrl
+
+        FROM chat_messages m
+
+        LEFT JOIN chat_messages r
+        ON r.messageId = m.replyToMessageId
+
         WHERE
-            conversationId=?
-            AND organizationId=?
-        ORDER BY createdAt ASC
+            m.conversationId=?
+            AND m.organizationId=?
+
+        ORDER BY m.createdAt ASC
         `,
         [
             conversationId,
