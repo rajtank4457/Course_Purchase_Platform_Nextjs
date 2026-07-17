@@ -123,19 +123,24 @@ export const addExam = async (req, res) => {
     }
 
     const result = await insertRow("exam_details", {
+      organizationId: req.organizationId,
       courseId,
       chId: examType === "chapter" ? chId : null,
       examType,
       examTitle,
       examDesc: examDesc || null,
       publishMode: publishMode || "manual",
-      scheduledPublishAt: publishMode === "scheduled" ? scheduledPublishAt : null,
+      scheduledPublishAt:
+        publishMode === "scheduled" ? scheduledPublishAt : null,
       durationMinutes: durationMinutes || 30,
       totalMarks: totalMarks || 0,
       passingMarks: passingMarks || 0,
       maxAttempts: maxAttempts || 1,
       checkingType: Number(checkingType || 0),
-      isPublished: publishMode === "scheduled" ? 0 : Number(isPublished || 0),
+      isPublished:
+        publishMode === "scheduled"
+          ? 0
+          : Number(isPublished || 0),
       createdBy: req.userId,
     });
 
@@ -1552,22 +1557,24 @@ export const updateExam = async (req, res) => {
       `
       UPDATE exam_details
       SET
-        examType = ?,
-        courseId = ?,
-        chId = ?,
-        examTitle = ?,
-        examDesc = ?,
-        publishMode = ?,
-        scheduledPublishAt = ?,
-        durationMinutes = ?,
-        totalMarks = ?,
-        passingMarks = ?,
-        maxAttempts = ?,
-        checkingType = ?,
-        isPublished = ?
+          organizationId = ?,
+          examType = ?,
+          courseId = ?,
+          chId = ?,
+          examTitle = ?,
+          examDesc = ?,
+          publishMode = ?,
+          scheduledPublishAt = ?,
+          durationMinutes = ?,
+          totalMarks = ?,
+          passingMarks = ?,
+          maxAttempts = ?,
+          checkingType = ?,
+          isPublished = ?
       WHERE examId = ?
       `,
       [
+        req.organizationId,
         examType,
         courseId,
         examType === "chapter" ? chId : null,

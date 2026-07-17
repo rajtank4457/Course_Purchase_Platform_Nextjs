@@ -2,17 +2,75 @@
 
 import { Avatar, Badge, Box, Typography } from "@mui/material";
 
+import { apiRequest, chatApi } from "@/lib/apiHelper";
 import { useChat } from "@/context/ChatContext";
 
-export default function ConversationItem({ conversation }) {
-  const { selectedConversation, setSelectedConversation } = useChat();
+export default function ConversationItem({
+  conversation,
+  isConversation = true,
+}) {
+  const {
+    selectedConversation,
+    setSelectedConversation,
+    conversations,
+    setConversations,
+  } = useChat();
 
   const isSelected =
     selectedConversation?.conversationId === conversation.conversationId;
 
+  // ===========================
+  // Open / Create Conversation
+  // ===========================
+
+  const handleClick = async () => {
+    // Existing conversation
+    if (isConversation) {
+      setSelectedConversation(conversation);
+      return;
+    }
+
+    // Already created?
+    const existing = conversations.find(
+      (c) => c.userId === conversation.userId,
+    );
+
+    if (existing) {
+      setSelectedConversation(existing);
+      return;
+    }
+
+    // Create new conversation
+
+    const res = await apiRequest(chatApi.createConversation, {
+      method: "POST",
+      data: {
+        receiverId: conversation.userId,
+      },
+    });
+
+    if (!res.success) return;
+
+    const newConversation = {
+      ...conversation,
+
+      ...res.data.data,
+
+      unreadCount: 0,
+
+      lastMessage: "",
+
+      lastMessageAt: null,
+    };
+
+    setConversations((prev) => [newConversation, ...prev]);
+
+    setSelectedConversation(newConversation);
+  };
+
   return (
     <Box
-      onClick={() => setSelectedConversation(conversation)}
+      onClick={handleClick}
       sx={{
         px: 2,
         py: 1.5,
@@ -21,7 +79,6 @@ export default function ConversationItem({ conversation }) {
         alignItems: "center",
         gap: 2,
         transition: "0.25s",
-
         bgcolor: isSelected ? "action.selected" : "transparent",
 
         "&:hover": {
@@ -53,40 +110,42 @@ export default function ConversationItem({ conversation }) {
         </Typography>
       </Box>
 
-      <Box
-        display="flex"
-        flexDirection="column"
-        alignItems="flex-end"
-        gap={0.5}
-      >
-        <Typography variant="caption" color="text.secondary">
-          {conversation.lastMessageAt
-            ? new Date(conversation.lastMessageAt).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            : ""}
-        </Typography>
+      {isConversation && (
+        <Box
+          display="flex"
+          flexDirection="column"
+          alignItems="flex-end"
+          gap={0.5}
+        >
+          <Typography variant="caption" color="text.secondary">
+            {conversation.lastMessageAt
+              ? new Date(conversation.lastMessageAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : ""}
+          </Typography>
 
-        {conversation.unreadCount > 0 && (
-          <Box
-            sx={{
-              bgcolor: "#22c55e",
-              color: "#fff",
-              minWidth: 22,
-              height: 22,
-              borderRadius: 20,
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              fontSize: 12,
-              fontWeight: 700,
-            }}
-          >
-            {conversation.unreadCount}
-          </Box>
-        )}
-      </Box>
+          {conversation.unreadCount > 0 && (
+            <Box
+              sx={{
+                bgcolor: "#22c55e",
+                color: "#fff",
+                minWidth: 22,
+                height: 22,
+                borderRadius: 20,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              {conversation.unreadCount}
+            </Box>
+          )}
+        </Box>
+      )}
     </Box>
   );
 }

@@ -55,6 +55,8 @@ export const downloadCourseCertificate = async (req, res) => {
             [userId, courseId, organizationId]
         );
 
+        console.log("Student :", student);
+
         if (!student) {
             return res.status(403).json({
                 success: false,
@@ -64,26 +66,41 @@ export const downloadCourseCertificate = async (req, res) => {
 
         const progress = await findOne(
             `
-      SELECT 
-        COUNT(ch.chId) AS totalChapters,
-        COUNT(
-          CASE 
-            WHEN COALESCE(ucp.progress, 0) >= 100 THEN 1 
-          END
-        ) AS completedChapters
-      FROM chapter_details ch
-      LEFT JOIN user_chapter_progress ucp
-        ON ucp.chId = ch.chId
-       AND ucp.userId = ?
-       AND ucp.organizationId = ch.organizationId
-      WHERE ch.courseId = ?
-        AND ch.organizationId = ?
-      `,
-            [userId, courseId, organizationId]
+            SELECT
+                COUNT(DISTINCT ch.chId) AS totalChapters,
+
+                COUNT(
+                    DISTINCT
+                    CASE
+                        WHEN IFNULL(ucp.progress,0) >= 100
+                        THEN ch.chId
+                    END
+                ) AS completedChapters
+
+            FROM chapter_details ch
+
+            LEFT JOIN user_chapter_progress ucp
+                ON ucp.chId = ch.chId
+                AND ucp.courseId = ch.courseId
+                AND ucp.userId = ?
+
+            WHERE
+                ch.courseId = ?
+            AND ch.organizationId = ?
+            `,
+            [
+                userId,
+                courseId,
+                organizationId
+            ]
         );
 
         const totalChapters = Number(progress?.totalChapters || 0);
         const completedChapters = Number(progress?.completedChapters || 0);
+
+        console.log("Progress :", progress);
+        console.log("Total :", totalChapters);
+        console.log("Completed :", completedChapters);
 
         if (totalChapters === 0 || completedChapters < totalChapters) {
             return res.status(403).json({
@@ -94,26 +111,37 @@ export const downloadCourseCertificate = async (req, res) => {
 
         const passedExam = await findOne(
             `
-      SELECT 
-        e.examId,
-        ea.attemptId,
-        ea.status,
-        ea.obtainedMarks,
-        ea.totalMarks
-      FROM exam_details e
-      JOIN exam_attempts ea
-        ON ea.examId = e.examId
-       AND ea.organizationId = e.organizationId
-      WHERE e.courseId = ?
-        AND e.organizationId = ?
-        AND e.examType = 'course'
-        AND ea.userId = ?
-        AND ea.status = 'PASS'
-      ORDER BY ea.submittedAt DESC
-      LIMIT 1
-      `,
-            [courseId, organizationId, userId]
+            SELECT
+                e.examId,
+                ea.attemptId,
+                ea.status,
+                ea.obtainedMarks,
+                ea.totalMarks
+
+            FROM exam_details e
+
+            INNER JOIN exam_attempts ea
+                ON ea.examId = e.examId
+
+            WHERE
+                e.courseId = ?
+                AND e.examType = 'course'
+                AND ea.userId = ?
+                AND ea.organizationId = ?
+                AND ea.status = 'PASS'
+
+            ORDER BY ea.submittedAt DESC
+
+            LIMIT 1
+            `,
+            [
+                courseId,
+                userId,
+                organizationId
+            ]
         );
+
+        console.log("Passed Exam :", passedExam);
 
         if (!passedExam) {
             return res.status(403).json({

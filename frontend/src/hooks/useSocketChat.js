@@ -16,6 +16,7 @@ export default function useSocketChat() {
         selectedConversation,
         setOnlineUsers,
         setTypingUsers,
+        setLastSeenUsers,
     } = useChat();
 
     const socket = getSocket() || connectSocket();
@@ -83,20 +84,17 @@ export default function useSocketChat() {
     useEffect(() => {
         if (!selectedConversation) return;
 
-        loadMessages(
-            selectedConversation.conversationId
-        );
+        loadMessages(selectedConversation.conversationId);
 
-        socket.emit(
-            "joinConversation",
-            selectedConversation.conversationId
-        );
+        socket.emit("joinConversation", selectedConversation.conversationId);
+
+        // Mark as read
+        socket.emit("messagesRead", {
+            conversationId: selectedConversation.conversationId,
+        });
 
         return () => {
-            socket.emit(
-                "leaveConversation",
-                selectedConversation.conversationId
-            );
+            socket.emit("leaveConversation", selectedConversation.conversationId);
         };
     }, [selectedConversation]);
 
@@ -108,7 +106,16 @@ export default function useSocketChat() {
         if (!socket) return;
 
         socket.on("newMessage", (message) => {
-            setMessages((prev) => [...prev, message]);
+            setMessages((prev) => {
+                const exists = prev.some(
+                    (m) => m.messageId === message.messageId
+                );
+
+                if (exists) return prev;
+
+                return [...prev, message];
+            });
+
             loadConversations();
         });
 
@@ -135,11 +142,14 @@ export default function useSocketChat() {
         });
 
         socket.on("messagesRead", () => {
+
             if (selectedConversation) {
                 loadMessages(
                     selectedConversation.conversationId
                 );
             }
+            loadConversations();
+
         });
 
         socket.on("messageEdited", (edited) => {
@@ -189,15 +199,30 @@ export default function useSocketChat() {
         });
 
         socket.on("userOffline", (user) => {
+
             setOnlineUsers((prev) =>
                 prev.filter(
                     (x) => x.userId !== user.userId
                 )
             );
+
+            setLastSeenUsers((prev) => [
+                ...prev.filter(
+                    (x) => x.userId !== user.userId
+                ),
+                user,
+            ]);
+
         });
 
         socket.on("heartbeatAck", () => {
             console.log("Heartbeat OK");
+        });
+
+        socket.on("onlineUsers", (users) => {
+            console.log("Online Users:", users);
+
+            setOnlineUsers(users || []);
         });
 
         return () => {
@@ -211,8 +236,9 @@ export default function useSocketChat() {
             socket.off("userOnline");
             socket.off("userOffline");
             socket.off("heartbeatAck");
+            socket.off("onlineUsers");
         };
-    }, [selectedConversation]);
+    }, []);
 
     // ============================
     // Heartbeat
@@ -223,7 +249,7 @@ export default function useSocketChat() {
 
         const interval = setInterval(() => {
             socket.emit("heartbeat");
-        }, 60000);
+        }, 10000);
 
         return () => clearInterval(interval);
     }, []);

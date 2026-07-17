@@ -1,5 +1,6 @@
 import express from "express";
 import verifyToken from "../middleware/verifyToken.js";
+import uploadChatFile from "../middleware/uploadChatFile.js";
 import {
     getUsers,
     getConversations,
@@ -21,7 +22,11 @@ router.get("/messages/:conversationId", getMessages);
 
 router.post("/conversation", createConversation);
 
-router.post("/message", sendMessage);
+router.post(
+    "/send",
+    uploadChatFile.single("file"),
+    sendMessage
+);
 
 router.put("/read/:conversationId", markAsRead);
 

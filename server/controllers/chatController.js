@@ -57,15 +57,10 @@ export const getUsers = asyncHandler(async (req, res) => {
                 NULL AS profileImage
             FROM admins
             WHERE
-
                 organizationId=?
-
                 AND role='faculty'
-
-                AND isApproved=1
-
+                AND approvalStatus='APPROVED'
                 AND isActive=1
-
             ORDER BY adminName
             `,
             [organizationId]
@@ -313,34 +308,40 @@ export const getConversations = asyncHandler(async (req, res) => {
     else {
 
         query = `
-            SELECT
-                c.conversationId,
-                c.lastMessage,
-                c.lastMessageType,
-                c.lastMessageAt,
-                u.userId,
-                CONCAT(u.firstName,' ',u.lastName) AS name,
-                u.email,
-                NULL AS profileImage,
-                (
-                    SELECT COUNT(*)
-                    FROM chat_messages cm
-                    WHERE
-                        cm.conversationId=c.conversationId
-                        AND cm.receiverId=?
-                        AND cm.receiverRole='student'
-                        AND cm.isSeen=0
-                ) AS unreadCount
-            FROM chat_conversations c
-            INNER JOIN admins a
-                ON a.adminId=c.facultyId
-            WHERE
-                c.organizationId=?
-                AND c.studentId=?
-            ORDER BY
-                c.lastMessageAt DESC,
-                c.updatedAt DESC
-        `;
+                SELECT
+                    c.conversationId,
+                    c.lastMessage,
+                    c.lastMessageType,
+                    c.lastMessageAt,
+
+                    a.adminId AS userId,
+                    a.adminName AS name,
+                    a.email,
+                    NULL AS profileImage,
+
+                    (
+                        SELECT COUNT(*)
+                        FROM chat_messages cm
+                        WHERE
+                            cm.conversationId = c.conversationId
+                            AND cm.receiverId = ?
+                            AND cm.receiverRole = 'student'
+                            AND cm.isSeen = 0
+                    ) AS unreadCount
+
+                FROM chat_conversations c
+
+                INNER JOIN admins a
+                    ON a.adminId = c.facultyId
+
+                WHERE
+                    c.organizationId = ?
+                    AND c.studentId = ?
+
+                ORDER BY
+                    c.lastMessageAt DESC,
+                    c.updatedAt DESC
+                `;
 
         params = [
             userId,
@@ -456,13 +457,32 @@ export const sendMessage = asyncHandler(async (req, res) => {
     const senderRole = req.userRole;
 
     const {
+
         conversationId,
+
         message,
+
+        replyToMessageId = null,
+
         messageType = "text",
-        fileUrl = null,
-        fileName = null,
-        fileSize = null
+
     } = req.body;
+
+    console.log(req.body.message);
+
+    let fileUrl = null;
+    let fileName = null;
+    let fileSize = null;
+
+    if (req.file) {
+
+        fileUrl = `/uploads/chat/${req.file.filename}`;
+
+        fileName = req.file.originalname;
+
+        fileSize = req.file.size;
+
+    }
 
     if (!conversationId) {
 
@@ -524,14 +544,8 @@ export const sendMessage = asyncHandler(async (req, res) => {
 
     if (senderRole === "faculty") {
 
-        if (chat.facultyId !== senderId) {
-
-            return sendError(
-                res,
-                "Unauthorized",
-                403
-            );
-
+        if (Number(chat.facultyId) !== Number(senderId)) {
+            return sendError(res, "Unauthorized", 403);
         }
 
         receiverId = chat.studentId;
@@ -539,14 +553,8 @@ export const sendMessage = asyncHandler(async (req, res) => {
 
     } else {
 
-        if (chat.studentId !== senderId) {
-
-            return sendError(
-                res,
-                "Unauthorized",
-                403
-            );
-
+        if (Number(chat.studentId) !== Number(senderId)) {
+            return sendError(res, "Unauthorized", 403);
         }
 
         receiverId = chat.facultyId;
@@ -568,6 +576,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
             senderRole,
             receiverId,
             receiverRole,
+            replyToMessageId,
             message,
             messageType,
             fileUrl,
@@ -575,7 +584,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
             fileSize
         )
         VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
             conversationId,
@@ -584,6 +593,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
             senderRole,
             receiverId,
             receiverRole,
+            replyToMessageId,
             message || null,
             messageType,
             fileUrl,
@@ -598,10 +608,22 @@ export const sendMessage = asyncHandler(async (req, res) => {
 
     const [messages] = await db.query(
         `
-        SELECT *
-        FROM chat_messages
-        WHERE messageId=?
-        `,
+    SELECT
+        m.*,
+
+        r.message AS replyMessage,
+        r.senderId AS replySenderId,
+        r.senderRole AS replySenderRole,
+        r.messageType AS replyMessageType,
+        r.fileName AS replyFileName
+
+    FROM chat_messages m
+
+    LEFT JOIN chat_messages r
+        ON r.messageId = m.replyToMessageId
+
+    WHERE m.messageId = ?
+    `,
         [
             result.insertId
         ]
@@ -661,16 +683,6 @@ export const sendMessage = asyncHandler(async (req, res) => {
     // Real Time Message
     //--------------------------------------------------
 
-    io.to(receiverRoom).emit(
-        "newMessage",
-        newMessage
-    );
-
-    io.to(senderRoom).emit(
-        "newMessage",
-        newMessage
-    );
-
     io.to(conversationRoom).emit(
         "newMessage",
         newMessage
@@ -681,13 +693,6 @@ export const sendMessage = asyncHandler(async (req, res) => {
     //--------------------------------------------------
 
     io.to(receiverRoom).emit(
-        "conversationUpdated",
-        {
-            conversationId
-        }
-    );
-
-    io.to(senderRoom).emit(
         "conversationUpdated",
         {
             conversationId
@@ -741,11 +746,17 @@ export const markAsRead = asyncHandler(async (req, res) => {
         WHERE
         conversationId=?
         AND organizationId=?
+        AND (
+            facultyId=?
+            OR studentId=?
+        )
         LIMIT 1
         `,
         [
             conversationId,
-            organizationId
+            organizationId,
+            userId,
+            userId
         ]
     );
 
@@ -767,15 +778,13 @@ export const markAsRead = asyncHandler(async (req, res) => {
         `
         UPDATE chat_messages
         SET
-            isRead=1
+            isSeen = 1,
+            seenAt = NOW()
         WHERE
-            conversationId=?
-        AND
-            receiverId=?
-        AND
-            receiverRole=?
-        AND
-            isRead=0
+            conversationId = ?
+            AND receiverId = ?
+            AND receiverRole = ?
+            AND isSeen = 0
         `,
         [
             conversationId,
@@ -809,9 +818,9 @@ export const markAsRead = asyncHandler(async (req, res) => {
     // Socket Event
     //-------------------------------------
 
-    const io = req.app.get("io");
+    const io = getIO();
 
-    io.to(`${senderRole}_${senderId}`).emit(
+    io.to(`org_${organizationId}_${senderRole}_${senderId}`).emit(
         "messagesRead",
         {
             conversationId,

@@ -17,6 +17,7 @@
     "@mui/material": "^6.5.0",
     "axios": "^1.16.1",
     "crypto-js": "^4.2.0",
+    "emoji-picker-react": "^4.19.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.16.0",

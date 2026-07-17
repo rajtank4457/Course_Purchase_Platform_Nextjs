@@ -1,6 +1,6 @@
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
-import { connectToDatabase } from "../lib/db.js";
+import { getDb } from "../helpers/dbHelper.js";
 
 let io;
 
@@ -48,7 +48,7 @@ async function socketAuth(socket, next) {
             process.env.JWT_KEY
         );
 
-        const db = await connectToDatabase();
+        const db = await getDb();
 
         const [sessions] = await db.query(
             `
@@ -102,7 +102,7 @@ async function socketAuth(socket, next) {
 
 async function handleConnection(socket) {
 
-    const db = await connectToDatabase();
+    const db = await getDb();
 
     const {
         userId,
@@ -132,7 +132,7 @@ async function handleConnection(socket) {
     /*Personal Room*/
 
     const personalRoom =
-        `org_${organizationId}_${userType}_${userId}`;
+        `org_${organizationId}_${userRole}_${userId}`;
 
     socket.join(personalRoom);
 
@@ -360,22 +360,44 @@ async function handleConnection(socket) {
 
     socket.on(
         "messagesRead",
-        ({ conversationId }) => {
+        async ({ conversationId }) => {
 
-            io.to(
-                `conversation_${conversationId}`
-            ).emit(
-                "messagesRead",
-                {
+            try {
 
-                    conversationId,
+                // Mark all received messages as seen
+                await db.query(
+                    `
+                UPDATE chat_messages
+                SET
+                    isSeen = 1,
+                    seenAt = NOW()
+                WHERE
+                    conversationId = ?
+                AND receiverId = ?
+                AND isSeen = 0
+                `,
+                    [
+                        conversationId,
+                        userId
+                    ]
+                );
 
-                    readBy: userId,
+                io.to(
+                    `conversation_${conversationId}`
+                ).emit(
+                    "messagesRead",
+                    {
+                        conversationId,
+                        readBy: userId,
+                        readAt: new Date(),
+                    }
+                );
 
-                    readAt: new Date(),
+            } catch (err) {
 
-                }
-            );
+                console.log(err);
+
+            }
 
         }
     );

@@ -6,6 +6,7 @@ import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { useChat } from "@/context/ChatContext";
 import EmptyChat from "./EmptyChat";
 import useSocketChat from "@/hooks/useSocketChat";
+import ChatWindow from "./ChatWindow";
 
 export default function ChatDrawer() {
   const {
@@ -60,8 +61,8 @@ export default function ChatDrawer() {
 
           {/* Right */}
 
-          <Box flex={1}>
-            <EmptyChat />
+          <Box flex={1} height="100%">
+            <ChatWindow />
           </Box>
         </Box>
       </Box>

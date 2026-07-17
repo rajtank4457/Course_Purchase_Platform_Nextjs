@@ -255,7 +255,7 @@ const chatApi = {
   getMessages: (conversationId) =>
     `/chat/messages/${conversationId}`,
 
-  sendMessage: "/chat/message",
+  sendMessage: "/chat/send",
 
   markAsRead: "/chat/read",
 };
@@ -293,6 +293,13 @@ export const apiRequest = async (
     if (data !== undefined && data !== null) {
       if (isFormData) {
         config.data = data;
+        config.headers = {
+
+          ...config.headers,
+
+          "Content-Type": "multipart/form-data",
+
+        };
       } else {
         const encryptedPayload = encryptData(data);
 

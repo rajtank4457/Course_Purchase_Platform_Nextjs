@@ -53,6 +53,10 @@ export const ChatProvider = ({ children }) => {
 
   const [emojiOpen, setEmojiOpen] = useState(false);
 
+  const [lastSeenUsers, setLastSeenUsers] = useState([]);
+
+  const [replyMessage, setReplyMessage] = useState(null);
+
   const value = useMemo(
     () => ({
       drawerOpen,
@@ -96,6 +100,12 @@ export const ChatProvider = ({ children }) => {
 
       emojiOpen,
       setEmojiOpen,
+
+      lastSeenUsers,
+      setLastSeenUsers,
+
+      replyMessage,
+      setReplyMessage,
     }),
     [
       drawerOpen,
@@ -112,6 +122,8 @@ export const ChatProvider = ({ children }) => {
       search,
       selectedFile,
       emojiOpen,
+      lastSeenUsers,
+      replyMessage,
     ],
   );
 
