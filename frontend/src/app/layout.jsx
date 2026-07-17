@@ -1,6 +1,8 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+
 import SessionProvider from "@/components/SessionProvider";
+import { ChatProvider } from "@/context/ChatContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -25,7 +27,7 @@ export default function RootLayout({ children }) {
     >
       <body className="min-h-full flex flex-col">
         <SessionProvider>
-          {children}
+          <ChatProvider>{children}</ChatProvider>
         </SessionProvider>
       </body>
     </html>

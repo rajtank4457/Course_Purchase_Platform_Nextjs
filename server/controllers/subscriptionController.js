@@ -14,11 +14,18 @@ export const getSubscriptionPlans = asyncHandler(async (req, res) => {
     const db = await getDb();
 
     const [plans] = await db.query(`
-        SELECT *
-        FROM subscription_plans
-        WHERE isActive = 1
-        ORDER BY price ASC
-    `);
+        SELECT
+            sp.*,
+        COUNT(os.subscriptionId) AS subscribers,
+        COALESCE(COUNT(os.subscriptionId) * sp.price,0) AS revenue
+        FROM subscription_plans sp
+        LEFT JOIN organization_subscriptions os
+        ON os.planId = sp.planId
+        AND os.paymentStatus='success'
+        AND os.isActive=1
+        GROUP BY sp.planId
+        ORDER BY sp.price;
+        `);
 
     return sendEncrypted(res, 200, {
         success: true,
@@ -27,47 +34,209 @@ export const getSubscriptionPlans = asyncHandler(async (req, res) => {
     });
 });
 
+export const getSubscriptionPlanById = asyncHandler(async (req, res) => {
+    const { planId } = req.params;
+
+    const db = await getDb();
+
+    const [plans] = await db.query(
+        `
+        SELECT *
+        FROM subscription_plans
+        WHERE planId = ?
+        LIMIT 1
+        `,
+        [planId]
+    );
+
+    if (!plans.length) {
+        return sendError(res, "Subscription plan not found", 404);
+    }
+
+    const plan = plans[0];
+
+    const [permissionRows] = await db.query(
+        `
+        SELECT
+            p.permissionId,
+            p.permissionName
+        FROM subscription_plan_permissions spp
+        INNER JOIN permissions p
+            ON p.permissionId = spp.permissionId
+        WHERE spp.planId = ?
+        AND spp.isEnabled = 1
+        ORDER BY p.permissionName;
+        `,
+        [planId]
+    );
+
+    plan.permissions = permissionRows.map(
+        (p) => p.permissionId
+    );
+
+    plan.permissionNames = permissionRows.map(
+        (p) => p.permissionName
+    );
+
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Subscription plan fetched successfully",
+        data: plan,
+    });
+});
+
+export const getSubscriptionPermissions = asyncHandler(async (req, res) => {
+    const db = await getDb();
+
+    const [permissions] = await db.query(`
+        SELECT
+            permissionId,
+            permissionKey,
+            permissionName,
+            moduleName
+        FROM permissions
+        ORDER BY moduleName ASC, permissionName ASC
+    `);
+
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Permissions fetched successfully",
+        data: permissions,
+    });
+});
+
+export const getSubscriptionPlanPermissions = asyncHandler(async (req, res) => {
+    const { planId } = req.params;
+
+    const db = await getDb();
+
+    const [permissions] = await db.query(
+        `
+        SELECT
+            p.permissionId,
+            p.permissionKey,
+            p.permissionName,
+            p.moduleName,
+            IFNULL(spp.isEnabled,0) AS isEnabled
+        FROM permissions p
+        LEFT JOIN subscription_plan_permissions spp
+            ON spp.permissionId = p.permissionId
+            AND spp.planId = ?
+        ORDER BY p.permissionName
+        `,
+        [planId]
+    );
+
+    return sendEncrypted(res, 200, {
+        success: true,
+        message: "Plan permissions fetched successfully",
+        data: permissions,
+    });
+});
+
 export const addSubscriptionPlan = asyncHandler(async (req, res) => {
     const {
         planName,
+        targetRole,
         price,
         durationDays,
         maxCourses,
         maxChapters,
-        canCreateExam,
-        canViewAnalytics,
+        maxStudents,
+        maxFaculty,
+        maxExams,
+        storageLimit,
+        maxFileUploadSize,
+        isActive,
+        permissions = [],
     } = req.body;
 
     if (!planName || !price || !durationDays) {
-        return sendError(res, "Plan name, price and duration are required", 400);
+        return sendError(
+            res,
+            "Plan name, price and duration are required",
+            400
+        );
     }
 
     const db = await getDb();
 
-    await db.query(
-        `
-        INSERT INTO subscription_plans
-        (
-            planName, price, durationDays, maxCourses, maxChapters,
-            canCreateExam, canViewAnalytics, isActive
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-        `,
-        [
-            planName,
-            price,
-            durationDays,
-            maxCourses || null,
-            maxChapters || null,
-            canCreateExam ? 1 : 0,
-            canViewAnalytics ? 1 : 0,
-        ]
-    );
+    await db.beginTransaction();
 
-    return sendEncrypted(res, 201, {
-        success: true,
-        message: "Subscription plan added successfully",
-    });
+    try {
+
+        const [result] = await db.query(
+            `
+            INSERT INTO subscription_plans
+            (
+                planName,
+                targetRole,
+                price,
+                durationDays,
+                maxCourses,
+                maxChapters,
+                maxStudents,
+                maxFaculty,
+                maxExams,
+                storageLimit,
+                maxFileUploadSize,
+                isActive
+            )
+            VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            [
+                planName,
+                targetRole || "both",
+                price,
+                durationDays,
+                maxCourses || 0,
+                maxChapters || 0,
+                maxStudents || 0,
+                maxFaculty || 0,
+                maxExams || 0,
+                storageLimit,
+                maxFileUploadSize,
+                isActive ?? 1,
+            ]
+        );
+
+        const planId = result.insertId;
+
+        if (permissions.length > 0) {
+
+            const values = permissions.map(permissionId => [
+                planId,
+                permissionId,
+                1,
+            ]);
+
+            await db.query(
+                `
+                INSERT INTO subscription_plan_permissions
+                (
+                    planId,
+                    permissionId,
+                    isEnabled
+                )
+                VALUES ?
+                `,
+                [values]
+            );
+        }
+
+        await db.commit();
+
+        return sendEncrypted(res, 201, {
+            success: true,
+            message: "Subscription plan added successfully",
+        });
+
+    } catch (err) {
+
+        await db.rollback();
+        throw err;
+    }
 });
 
 export const updateSubscriptionPlan = asyncHandler(async (req, res) => {
@@ -75,19 +244,29 @@ export const updateSubscriptionPlan = asyncHandler(async (req, res) => {
 
     const {
         planName,
+        targetRole,
         price,
         durationDays,
         maxCourses,
         maxChapters,
-        canCreateExam,
-        canViewAnalytics,
+        maxStudents,
+        maxFaculty,
+        maxExams,
+        storageLimit,
+        maxFileUploadSize,
         isActive,
+        permissions = [],
     } = req.body;
 
     const db = await getDb();
 
     const [exists] = await db.query(
-        `SELECT planId FROM subscription_plans WHERE planId = ? LIMIT 1`,
+        `
+        SELECT planId
+        FROM subscription_plans
+        WHERE planId=?
+        LIMIT 1
+        `,
         [planId]
     );
 
@@ -95,36 +274,143 @@ export const updateSubscriptionPlan = asyncHandler(async (req, res) => {
         return sendError(res, "Subscription plan not found", 404);
     }
 
-    await db.query(
-        `
-        UPDATE subscription_plans
-        SET planName = ?,
-            price = ?,
-            durationDays = ?,
-            maxCourses = ?,
-            maxChapters = ?,
-            canCreateExam = ?,
-            canViewAnalytics = ?,
-            isActive = ?
-        WHERE planId = ?
-        `,
-        [
-            planName,
-            price,
-            durationDays,
-            maxCourses || null,
-            maxChapters || null,
-            canCreateExam ? 1 : 0,
-            canViewAnalytics ? 1 : 0,
-            isActive ?? 1,
-            planId,
-        ]
-    );
+    await db.beginTransaction();
 
-    return sendEncrypted(res, 200, {
-        success: true,
-        message: "Subscription plan updated successfully",
-    });
+    try {
+
+        const [result] = await db.query(
+            `
+            UPDATE subscription_plans
+            SET
+                planName=?,
+                targetRole=?,
+                price=?,
+                durationDays=?,
+                maxCourses=?,
+                maxChapters=?,
+                maxStudents=?,
+                maxFaculty=?,
+                maxExams=?,
+                storageLimit=?,
+                maxFileUploadSize=?,
+                isActive=?
+            WHERE planId=?
+            `,
+            [
+                planName,
+                targetRole,
+                price,
+                durationDays,
+                maxCourses,
+                maxChapters,
+                maxStudents,
+                maxFaculty,
+                maxExams,
+                storageLimit,
+                maxFileUploadSize,
+                isActive,
+                planId,
+            ]
+        );
+
+        await db.query(
+            `
+            DELETE
+            FROM subscription_plan_permissions
+            WHERE planId=?
+            `,
+            [planId]
+        );
+
+        if (permissions.length > 0) {
+
+            const values = permissions.map(permissionId => [
+                planId,
+                permissionId,
+                1,
+            ]);
+
+            await db.query(
+                `
+                INSERT INTO subscription_plan_permissions
+                (
+                    planId,
+                    permissionId,
+                    isEnabled
+                )
+                VALUES ?
+                `,
+                [values]
+            );
+        }
+
+        await db.commit();
+
+        return sendEncrypted(res, 200, {
+            success: true,
+            message: "Subscription plan updated successfully",
+        });
+
+    } catch (err) {
+
+        await db.rollback();
+        throw err;
+    }
+});
+
+export const updateSubscriptionPlanPermissions = asyncHandler(async (req, res) => {
+    const { planId } = req.params;
+    const { permissions } = req.body;
+
+    const db = await getDb();
+
+    await db.beginTransaction();
+
+    try {
+
+        await db.query(
+            `
+            DELETE FROM subscription_plan_permissions
+            WHERE planId=?
+            `,
+            [planId]
+        );
+
+        if (Array.isArray(permissions) && permissions.length > 0) {
+
+            const values = permissions.map(permissionId => [
+                planId,
+                permissionId,
+                1,
+            ]);
+
+            await db.query(
+                `
+                INSERT INTO subscription_plan_permissions
+                (
+                    planId,
+                    permissionId,
+                    isEnabled
+                )
+                VALUES ?
+                `,
+                [values]
+            );
+        }
+
+        await db.commit();
+
+        return sendEncrypted(res, 200, {
+            success: true,
+            message: "Plan permissions updated successfully"
+        });
+
+    } catch (err) {
+
+        await db.rollback();
+
+        throw err;
+    }
 });
 
 export const createSubscriptionOrder = asyncHandler(async (req, res) => {
@@ -353,6 +639,7 @@ export const verifySubscriptionPayment = asyncHandler(async (req, res) => {
 });
 
 export const getMySubscription = asyncHandler(async (req, res) => {
+
     const db = await getDb();
 
     if (!req.organizationId) {
@@ -369,26 +656,66 @@ export const getMySubscription = asyncHandler(async (req, res) => {
             s.isActive,
             s.startDate,
             s.endDate,
+
             sp.planName,
+            sp.targetRole,
             sp.price,
             sp.durationDays,
             sp.maxCourses,
             sp.maxChapters,
-            sp.canCreateExam,
-            sp.canViewAnalytics
+            sp.maxStudents,
+            sp.maxFaculty,
+            sp.maxExams,
+            sp.storageLimit,
+            sp.maxFileUploadSize
+
         FROM organization_subscriptions s
-        JOIN subscription_plans sp ON s.planId = sp.planId
-        WHERE s.organizationId = ?
+
+        JOIN subscription_plans sp
+            ON sp.planId=s.planId
+
+        WHERE s.organizationId=?
+
         ORDER BY s.subscriptionId DESC
+
         LIMIT 1
         `,
         [req.organizationId]
     );
 
+    if (!rows.length) {
+
+        return sendEncrypted(res, 200, {
+            success: true,
+            message: "No subscription found",
+            data: null,
+        });
+    }
+
+    const subscription = rows[0];
+
+    const [permissionRows] = await db.query(
+        `
+        SELECT
+            p.permissionId,
+            p.permissionKey,
+            p.permissionName
+        FROM subscription_plan_permissions spp
+        JOIN permissions p
+            ON p.permissionId = spp.permissionId
+        WHERE spp.planId = ?
+        AND spp.isEnabled = 1
+        ORDER BY p.permissionName
+        `,
+        [subscription.planId]
+    );
+
+    subscription.permissions = permissionRows;
+
     return sendEncrypted(res, 200, {
         success: true,
         message: "My subscription fetched successfully",
-        data: rows[0] || null,
+        data: subscription,
     });
 });
 

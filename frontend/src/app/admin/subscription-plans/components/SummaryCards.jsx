@@ -30,38 +30,65 @@ const cards = [
   },
 ];
 
-export default function SummaryCards({ summary }) {
+export default function SummaryCards({ summary = {} }) {
+  const formatNumber = (value) => {
+    return Number(value || 0).toLocaleString("en-IN");
+  };
+
+  const formatCurrency = (value) => {
+    return `₹${Number(value || 0).toLocaleString("en-IN")}`;
+  };
+
   return (
     <Grid2 container spacing={2}>
-      {cards.map((card) => (
-        <Grid2 item xs={12} md={3} key={card.key}>
-          <Paper
-            elevation={2}
-            sx={{
-              p: 3,
-              borderRadius: 3,
+      {cards.map((card) => {
+        const value = summary?.[card.key] ?? 0;
+
+        return (
+          <Grid2
+            key={card.key}
+            size={{
+              xs: 12,
+              sm: 6,
+              md: 3,
             }}
           >
-            <Stack
-              direction="row"
-              justifyContent="space-between"
-              alignItems="center"
+            <Paper
+              elevation={2}
+              sx={{
+                p: 3,
+                borderRadius: 3,
+                height: "100%",
+                transition: "0.25s",
+                "&:hover": {
+                  boxShadow: 6,
+                  transform: "translateY(-2px)",
+                },
+              }}
             >
-              <div>
-                <Typography color="text.secondary">{card.title}</Typography>
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="center"
+              >
+                <Stack spacing={0.5}>
+                  <Typography variant="body2" color="text.secondary">
+                    {card.title}
+                  </Typography>
 
-                <Typography variant="h5" fontWeight={700}>
-                  {card.key === "totalRevenue"
-                    ? `₹${summary[card.key].toLocaleString()}`
-                    : summary[card.key]}
-                </Typography>
-              </div>
+                  <Typography variant="h5" fontWeight={700}>
+                    {card.key === "totalRevenue"
+                      ? formatCurrency(value)
+                      : formatNumber(value)}
+                  </Typography>
+                </Stack>
 
-              {card.icon}
-            </Stack>
-          </Paper>
-        </Grid2>
-      ))}
+                {card.icon}
+              </Stack>
+            </Paper>
+          </Grid2>
+        );
+      })}
     </Grid2>
   );
 }

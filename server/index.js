@@ -3,7 +3,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
 import http from "http";
-import { Server } from "socket.io";
+// import { Server } from "socket.io";
+import { initSocket } from "./socket/socket.js";
 import { decryptRequest } from "./middleware/cryptoMiddleware.js";
 
 import authRoutes from "./routes/authRoutes.js";
@@ -32,6 +33,7 @@ import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 import facultyRoutes from "./routes/facultyRoutes.js";
 import roleManagementRoutes from "./routes/roleManagementRoutes.js";
 import storageRoutes from "./routes/storageRoutes.js";
+import chatRoutes from "./routes/chatRoutes.js";
 
 dotenv.config();
 
@@ -86,6 +88,7 @@ app.use("/subscriptions", subscriptionRoutes);
 app.use("/faculty", facultyRoutes);
 app.use("/role-management", roleManagementRoutes);
 app.use("/storage", storageRoutes);
+app.use("/chat", chatRoutes);
 
 /* Static Uploads */
 
@@ -98,33 +101,35 @@ app.use(
 
 const server = http.createServer(app);
 
-export const io = new Server(server, {
-  cors: {
-    origin: "http://localhost:3000",
-    credentials: true,
-    methods: ["GET", "POST"],
-  },
-});
+// export const io = new Server(server, {
+//   cors: {
+//     origin: "http://localhost:3000",
+//     credentials: true,
+//     methods: ["GET", "POST"],
+//   },
+// });
+
+const io = initSocket(server);
 
 app.set("io", io);
 
-io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+// io.on("connection", (socket) => {
+//   console.log("User connected:", socket.id);
 
-  socket.on("joinUser", (userId) => {
-    socket.join(`user_${userId}`);
-    console.log(`User joined room: user_${userId}`);
-  });
+//   socket.on("joinUser", (userId) => {
+//     socket.join(`user_${userId}`);
+//     console.log(`User joined room: user_${userId}`);
+//   });
 
-  socket.on("joinAdmin", () => {
-    socket.join("admins");
-    console.log("Admin joined admins room");
-  });
+//   socket.on("joinAdmin", () => {
+//     socket.join("admins");
+//     console.log("Admin joined admins room");
+//   });
 
-  socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
-  });
-});
+//   socket.on("disconnect", () => {
+//     console.log("User disconnected:", socket.id);
+//   });
+// });
 
 startExamPublishJob(io);
 

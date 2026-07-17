@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import {
-  Box,
   Chip,
   IconButton,
   Paper,
@@ -23,11 +22,14 @@ import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 
 const headCells = [
-  { id: "name", label: "Plan Name" },
+  { id: "planName", label: "Plan Name" },
+  { id: "targetRole", label: "Target Role" },
   { id: "price", label: "Price" },
-  { id: "duration", label: "Duration" },
-  { id: "organizations", label: "Organizations" },
-  { id: "status", label: "Status" },
+  { id: "durationDays", label: "Duration" },
+  { id: "maxStudents", label: "Students" },
+  { id: "maxFaculty", label: "Faculty" },
+  { id: "maxCourses", label: "Courses" },
+  { id: "isActive", label: "Status" },
   { id: "createdAt", label: "Created" },
   { id: "actions", label: "Actions", sortable: false },
 ];
@@ -52,8 +54,14 @@ export default function PlanTable({ rows = [], onEdit, onDelete, onView }) {
       const valueA = a[orderBy];
       const valueB = b[orderBy];
 
-      if (typeof valueA === "number") {
+      if (typeof valueA === "number" && typeof valueB === "number") {
         return order === "asc" ? valueA - valueB : valueB - valueA;
+      }
+
+      if (typeof valueA === "boolean") {
+        return order === "asc"
+          ? Number(valueA) - Number(valueB)
+          : Number(valueB) - Number(valueA);
       }
 
       return order === "asc"
@@ -102,7 +110,7 @@ export default function PlanTable({ rows = [], onEdit, onDelete, onView }) {
           <TableBody>
             {visibleRows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
                   <Typography color="text.secondary">
                     No Subscription Plans Found
                   </Typography>
@@ -111,22 +119,28 @@ export default function PlanTable({ rows = [], onEdit, onDelete, onView }) {
             )}
 
             {visibleRows.map((plan) => (
-              <TableRow hover key={plan.id}>
+              <TableRow hover key={plan.planId}>
                 <TableCell>
-                  <Typography fontWeight={600}>{plan.name}</Typography>
+                  <Typography fontWeight={600}>{plan.planName}</Typography>
                 </TableCell>
+
+                <TableCell>{plan.targetRole}</TableCell>
 
                 <TableCell>₹{Number(plan.price).toLocaleString()}</TableCell>
 
-                <TableCell>{plan.duration} Days</TableCell>
+                <TableCell>{plan.durationDays} Days</TableCell>
 
-                <TableCell>{plan.organizations ?? 0}</TableCell>
+                <TableCell>{plan.maxStudents}</TableCell>
+
+                <TableCell>{plan.maxFaculty}</TableCell>
+
+                <TableCell>{plan.maxCourses}</TableCell>
 
                 <TableCell>
                   <Chip
                     size="small"
-                    label={plan.status}
-                    color={plan.status === "Active" ? "success" : "default"}
+                    label={plan.isActive ? "Active" : "Inactive"}
+                    color={plan.isActive ? "success" : "default"}
                   />
                 </TableCell>
 

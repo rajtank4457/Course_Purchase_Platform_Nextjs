@@ -190,12 +190,44 @@ const roleManagementApi = {
 };
 
 const subscriptionApi = {
+  // =========================
+  // Subscription Plan Management
+  // =========================
+
   getPlans: "/subscriptions/plans",
+
+  getPlanById: (planId) =>
+    `/subscriptions/plans/${planId}`,
+
   addPlan: "/subscriptions/plans/add",
-  updatePlan: (planId) => `/subscriptions/plans/update/${planId}`,
+
+  updatePlan: (planId) =>
+    `/subscriptions/plans/update/${planId}`,
+
+  deletePlan: (planId) =>
+    `/subscriptions/plans/delete/${planId}`,
+
+  // =========================
+  // Permissions
+  // =========================
+
+  getPermissions:
+    "/subscriptions/permissions",
+
+  getPlanPermissions: (planId) =>
+    `/subscriptions/plans/${planId}/permissions`,
+
+  updatePlanPermissions: (planId) =>
+    `/subscriptions/plans/${planId}/permissions`,
+
+  // =========================
+  // Purchase APIs
+  // =========================
 
   createOrder: "/subscriptions/create-order",
+
   verifyPayment: "/subscriptions/verify-payment",
+
   mySubscription: "/subscriptions/my-subscription",
 
   organizationSubscription: (organizationId) =>
@@ -211,6 +243,21 @@ const facultyApi = {
 
 const storageApi = {
   getStorage: "/storage",
+};
+
+const chatApi = {
+  getUsers: "/chat/users",
+
+  getConversations: "/chat/conversations",
+
+  createConversation: "/chat/conversation",
+
+  getMessages: (conversationId) =>
+    `/chat/messages/${conversationId}`,
+
+  sendMessage: "/chat/message",
+
+  markAsRead: "/chat/read",
 };
 
 export const apiRequest = async (
@@ -310,4 +357,5 @@ export {
   subscriptionApi,
   facultyApi,
   storageApi,
+  chatApi,
 };

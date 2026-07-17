@@ -2,7 +2,14 @@
 
 import { Stack, TextField, MenuItem } from "@mui/material";
 
-export default function PlanToolbar({ search, setSearch }) {
+export default function PlanToolbar({
+  search,
+  setSearch,
+  roleFilter,
+  setRoleFilter,
+  sortBy,
+  setSortBy,
+}) {
   return (
     <Stack
       direction={{
@@ -21,11 +28,12 @@ export default function PlanToolbar({ search, setSearch }) {
       />
 
       <TextField
-        size="small"
         select
-        defaultValue="all"
+        size="small"
+        label="Target Role"
+        value={roleFilter}
+        onChange={(e) => setRoleFilter(e.target.value)}
         sx={{ minWidth: 180 }}
-        label="Role"
       >
         <MenuItem value="all">All</MenuItem>
 
@@ -37,15 +45,20 @@ export default function PlanToolbar({ search, setSearch }) {
       </TextField>
 
       <TextField
-        size="small"
         select
-        defaultValue="price"
+        size="small"
+        label="Sort By"
+        value={sortBy}
+        onChange={(e) => setSortBy(e.target.value)}
         sx={{ minWidth: 180 }}
-        label="Sort"
       >
-        <MenuItem value="price">Price</MenuItem>
+        <MenuItem value="latest">Latest</MenuItem>
 
-        <MenuItem value="name">Name</MenuItem>
+        <MenuItem value="priceLow">Price : Low → High</MenuItem>
+
+        <MenuItem value="priceHigh">Price : High → Low</MenuItem>
+
+        <MenuItem value="name">Plan Name</MenuItem>
 
         <MenuItem value="duration">Duration</MenuItem>
       </TextField>

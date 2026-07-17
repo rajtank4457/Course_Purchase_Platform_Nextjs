@@ -39,7 +39,7 @@ import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import CardGiftcardIcon from "@mui/icons-material/CardGiftcard";
 
 import { GraduationCap } from "lucide-react";
-import { socket } from "@/lib/socket";
+import { connectSocket, getSocket } from "@/lib/socket";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 
 import MenuIcon from "@mui/icons-material/Menu";
@@ -54,6 +54,9 @@ import CalendarCheckIcon from "@mui/icons-material/CalendarMonth";
 import FavoriteIcon from "@mui/icons-material/Favorite";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+
+import ChatIcon from "@/components/chat/ChatIcon";
+import ChatDrawer from "@/components/chat/ChatDrawer";
 
 export default function Header() {
   const router = useRouter();
@@ -487,6 +490,8 @@ export default function Header() {
       }
     };
 
+    const socket = getSocket() || connectSocket();
+
     if (socket.connected) joinRoom();
     socket.on("connect", joinRoom);
 
@@ -696,8 +701,6 @@ export default function Header() {
     Management: "management",
   };
 
-  console.log("Notifications:", notifications);
-
   return (
     <header className="sticky top-0 z-50 border-b bg-white shadow-sm">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
@@ -901,6 +904,8 @@ export default function Header() {
               <NotificationsIcon />
             </Badge>
           </IconButton>
+
+          {role !== "super_admin" && <ChatIcon />}
 
           {role === "admin" && (
             <Button
@@ -1260,6 +1265,7 @@ export default function Header() {
           </Grow>
         )}
       </Popper>
+      <ChatDrawer />
     </header>
   );
 }
